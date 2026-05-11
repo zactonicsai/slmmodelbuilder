@@ -356,6 +356,9 @@ $ ollama run my-slm</pre>
       <div class="flex flex-wrap gap-2 items-center">
         <input id="search-input" type="search" placeholder="Filter entries..."
           class="carbon flex-1 min-w-[200px] px-3 py-2 bg-ibm-gray10 dark:bg-ibm-gray90 border-b-2 border-ibm-gray50 focus:border-ibm-blue60 text-sm">
+        <button id="btn-reset-defaults" class="px-4 py-2 border border-ibm-gray100 dark:border-ibm-gray10 hover:bg-ibm-gray10 dark:hover:bg-ibm-gray90 text-sm">
+          Reset to defaults
+        </button>
         <button id="btn-delete-all" class="px-4 py-2 border border-red-600 text-red-600 hover:bg-red-600 hover:text-white text-sm">
           Delete all
         </button>
@@ -702,7 +705,13 @@ initTheme();
 function loadData() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    dataset = raw ? JSON.parse(raw) : [];
+    if (raw === null) {
+      // First-ever launch — auto-populate with the default example dataset
+      dataset = SAMPLES.map(s => makeEntry(s.u, s.a, ''));
+      saveData();
+      return;
+    }
+    dataset = JSON.parse(raw);
     if (!Array.isArray(dataset)) dataset = [];
   } catch (e) {
     console.warn('Failed to load data', e);
@@ -900,19 +909,1859 @@ document.getElementById('btn-delete-all').addEventListener('click', () => {
   toast('All entries deleted', 'warn');
 });
 
+document.getElementById('btn-reset-defaults').addEventListener('click', () => {
+  const msg = dataset.length > 0
+    ? `Replace your current ${dataset.length} entries with ${SAMPLES.length} default examples? Your current data will be lost.`
+    : `Load ${SAMPLES.length} default example entries?`;
+  if (!confirm(msg)) return;
+  dataset = SAMPLES.map(s => makeEntry(s.u, s.a, ''));
+  saveData();
+  renderAll();
+  toast(`Loaded ${SAMPLES.length} example entries`);
+});
+
 document.getElementById('search-input').addEventListener('input', renderTable);
 
 // ============================================================
 // SAMPLE DATA
 // ============================================================
 const SAMPLES = [
+  // ===== PYTHON: CLASSES & FUNCTIONS =====
+  {
+    u: "Write a simple Python class for a Person with name and age",
+    a: `Here's a Person class with a constructor and a greet method:
+
+\`\`\`python
+class Person:
+    def __init__(self, name: str, age: int):
+        self.name = name
+        self.age = age
+
+    def greet(self) -> str:
+        return f"Hi, I'm {self.name} and I'm {self.age} years old."
+
+# Usage
+p = Person("Alice", 30)
+print(p.greet())
+\`\`\``
+  },
+  {
+    u: "Create a Python BankAccount class with deposit and withdraw methods",
+    a: `A BankAccount class with input validation:
+
+\`\`\`python
+class BankAccount:
+    def __init__(self, owner: str, balance: float = 0.0):
+        self.owner = owner
+        self.balance = balance
+
+    def deposit(self, amount: float) -> None:
+        if amount <= 0:
+            raise ValueError("Amount must be positive")
+        self.balance += amount
+
+    def withdraw(self, amount: float) -> None:
+        if amount <= 0:
+            raise ValueError("Amount must be positive")
+        if amount > self.balance:
+            raise ValueError("Insufficient funds")
+        self.balance -= amount
+
+    def __repr__(self) -> str:
+        return f"BankAccount(owner={self.owner!r}, balance={self.balance:.2f})"
+\`\`\``
+  },
+  {
+    u: "Write a Python dataclass for a Product with id, name, and price",
+    a: `Use the @dataclass decorator for a concise data container:
+
+\`\`\`python
+from dataclasses import dataclass
+
+@dataclass
+class Product:
+    id: int
+    name: str
+    price: float
+
+    def discount(self, percent: float) -> float:
+        return self.price * (1 - percent / 100)
+
+p = Product(id=1, name="Widget", price=19.99)
+print(p.discount(10))  # 17.991
+\`\`\``
+  },
+  {
+    u: "Show me Python class inheritance with Animal and Dog",
+    a: `Subclass Animal and override the speak method:
+
+\`\`\`python
+class Animal:
+    def __init__(self, name: str):
+        self.name = name
+
+    def speak(self) -> str:
+        raise NotImplementedError("Subclasses must implement speak()")
+
+class Dog(Animal):
+    def speak(self) -> str:
+        return f"{self.name} says: Woof!"
+
+class Cat(Animal):
+    def speak(self) -> str:
+        return f"{self.name} says: Meow!"
+
+for animal in [Dog("Rex"), Cat("Whiskers")]:
+    print(animal.speak())
+\`\`\``
+  },
+  {
+    u: "Write a Python recursive factorial function with type hints",
+    a: `Classic recursion with a base case and validation:
+
+\`\`\`python
+def factorial(n: int) -> int:
+    if n < 0:
+        raise ValueError("n must be non-negative")
+    if n <= 1:
+        return 1
+    return n * factorial(n - 1)
+
+print(factorial(5))  # 120
+\`\`\``
+  },
+  {
+    u: "Write a Python function to filter even numbers from a list",
+    a: `Use a list comprehension with the modulo operator:
+
+\`\`\`python
+from typing import List
+
+def filter_evens(numbers: List[int]) -> List[int]:
+    return [n for n in numbers if n % 2 == 0]
+
+print(filter_evens([1, 2, 3, 4, 5, 6]))  # [2, 4, 6]
+\`\`\``
+  },
+  {
+    u: "Create a Python context manager for safely opening files",
+    a: `Use @contextmanager from contextlib:
+
+\`\`\`python
+from contextlib import contextmanager
+
+@contextmanager
+def open_file(path: str, mode: str = "r"):
+    f = open(path, mode)
+    try:
+        yield f
+    finally:
+        f.close()
+
+with open_file("data.txt") as f:
+    contents = f.read()
+\`\`\``
+  },
+  {
+    u: "Write a Python decorator that logs function calls",
+    a: `Use functools.wraps to preserve metadata:
+
+\`\`\`python
+import functools
+
+def log_calls(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        print(f"-> Calling {func.__name__}({args}, {kwargs})")
+        result = func(*args, **kwargs)
+        print(f"<- {func.__name__} returned {result!r}")
+        return result
+    return wrapper
+
+@log_calls
+def add(a: int, b: int) -> int:
+    return a + b
+
+add(2, 3)
+\`\`\``
+  },
+  {
+    u: "Create a Python class with @property for Temperature in Celsius and Fahrenheit",
+    a: `Use @property for computed and synchronized attributes:
+
+\`\`\`python
+class Temperature:
+    def __init__(self, celsius: float = 0.0):
+        self._celsius = celsius
+
+    @property
+    def celsius(self) -> float:
+        return self._celsius
+
+    @celsius.setter
+    def celsius(self, value: float) -> None:
+        if value < -273.15:
+            raise ValueError("Below absolute zero")
+        self._celsius = value
+
+    @property
+    def fahrenheit(self) -> float:
+        return self._celsius * 9 / 5 + 32
+
+    @fahrenheit.setter
+    def fahrenheit(self, value: float) -> None:
+        self.celsius = (value - 32) * 5 / 9
+\`\`\``
+  },
+  {
+    u: "Write a Python function using *args and **kwargs",
+    a: `*args collects positional arguments, **kwargs collects keyword arguments:
+
+\`\`\`python
+def flexible(*args, **kwargs) -> dict:
+    return {
+        "positional_count": len(args),
+        "positional": args,
+        "keyword": kwargs,
+    }
+
+print(flexible(1, 2, 3, name="Alice", debug=True))
+# {'positional_count': 3, 'positional': (1, 2, 3),
+#  'keyword': {'name': 'Alice', 'debug': True}}
+\`\`\``
+  },
+  {
+    u: "Show me a Python singleton class pattern",
+    a: `Override __new__ to return the same instance each time:
+
+\`\`\`python
+class Singleton:
+    _instance = None
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def __init__(self):
+        if not hasattr(self, "_initialized"):
+            self.data = {}
+            self._initialized = True
+
+a = Singleton()
+b = Singleton()
+assert a is b  # Same object
+\`\`\``
+  },
+  {
+    u: "Write a Python generator function for the Fibonacci sequence",
+    a: `Use yield to produce values lazily:
+
+\`\`\`python
+from typing import Iterator
+
+def fibonacci(limit: int) -> Iterator[int]:
+    a, b = 0, 1
+    while a < limit:
+        yield a
+        a, b = b, a + b
+
+print(list(fibonacci(100)))
+# [0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89]
+\`\`\``
+  },
+
+  // ===== TERRAFORM: AWS & AZURE =====
+  {
+    u: "Write a basic Terraform configuration for an AWS S3 bucket with versioning",
+    a: `Provider, bucket, versioning, and encryption:
+
+\`\`\`hcl
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+}
+
+provider "aws" {
+  region = "us-east-1"
+}
+
+resource "random_id" "suffix" {
+  byte_length = 4
+}
+
+resource "aws_s3_bucket" "data" {
+  bucket = "my-app-data-\${random_id.suffix.hex}"
+
+  tags = {
+    Environment = "production"
+    Project     = "myapp"
+  }
+}
+
+resource "aws_s3_bucket_versioning" "data" {
+  bucket = aws_s3_bucket.data.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "data" {
+  bucket = aws_s3_bucket.data.id
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+\`\`\``
+  },
+  {
+    u: "Create a Terraform AWS VPC with public and private subnets",
+    a: `VPC with one public subnet (internet gateway) and one private subnet (NAT gateway):
+
+\`\`\`hcl
+resource "aws_vpc" "main" {
+  cidr_block           = "10.0.0.0/16"
+  enable_dns_hostnames = true
+  enable_dns_support   = true
+  tags = { Name = "main-vpc" }
+}
+
+resource "aws_internet_gateway" "main" {
+  vpc_id = aws_vpc.main.id
+  tags   = { Name = "main-igw" }
+}
+
+resource "aws_subnet" "public" {
+  vpc_id                  = aws_vpc.main.id
+  cidr_block              = "10.0.1.0/24"
+  availability_zone       = "us-east-1a"
+  map_public_ip_on_launch = true
+  tags = { Name = "public-subnet" }
+}
+
+resource "aws_subnet" "private" {
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = "10.0.10.0/24"
+  availability_zone = "us-east-1a"
+  tags = { Name = "private-subnet" }
+}
+
+resource "aws_eip" "nat" {
+  domain = "vpc"
+}
+
+resource "aws_nat_gateway" "main" {
+  allocation_id = aws_eip.nat.id
+  subnet_id     = aws_subnet.public.id
+}
+
+resource "aws_route_table" "public" {
+  vpc_id = aws_vpc.main.id
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.main.id
+  }
+}
+
+resource "aws_route_table" "private" {
+  vpc_id = aws_vpc.main.id
+  route {
+    cidr_block     = "0.0.0.0/0"
+    nat_gateway_id = aws_nat_gateway.main.id
+  }
+}
+
+resource "aws_route_table_association" "public" {
+  subnet_id      = aws_subnet.public.id
+  route_table_id = aws_route_table.public.id
+}
+
+resource "aws_route_table_association" "private" {
+  subnet_id      = aws_subnet.private.id
+  route_table_id = aws_route_table.private.id
+}
+\`\`\``
+  },
+  {
+    u: "Write Terraform for an AWS EC2 instance with a security group",
+    a: `EC2 instance with a security group allowing SSH and HTTP, plus a user-data script:
+
+\`\`\`hcl
+resource "aws_security_group" "web" {
+  name        = "web-sg"
+  description = "Allow SSH and HTTP"
+
+  ingress {
+    description = "SSH"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    description = "HTTP"
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+resource "aws_instance" "web" {
+  ami                    = "ami-0c02fb55956c7d316"
+  instance_type          = "t3.micro"
+  vpc_security_group_ids = [aws_security_group.web.id]
+
+  user_data = <<-EOF
+              #!/bin/bash
+              yum update -y
+              yum install -y httpd
+              systemctl enable --now httpd
+              EOF
+
+  tags = { Name = "web-server" }
+}
+\`\`\``
+  },
+  {
+    u: "Create a Terraform IAM role allowing EC2 to read from S3",
+    a: `IAM role with an instance profile and a scoped read-only S3 policy:
+
+\`\`\`hcl
+data "aws_iam_policy_document" "assume_ec2" {
+  statement {
+    actions = ["sts:AssumeRole"]
+    principals {
+      type        = "Service"
+      identifiers = ["ec2.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "ec2_s3_read" {
+  name               = "ec2-s3-read-role"
+  assume_role_policy = data.aws_iam_policy_document.assume_ec2.json
+}
+
+data "aws_iam_policy_document" "s3_read" {
+  statement {
+    actions   = ["s3:GetObject", "s3:ListBucket"]
+    resources = [
+      "arn:aws:s3:::my-app-data-bucket",
+      "arn:aws:s3:::my-app-data-bucket/*",
+    ]
+  }
+}
+
+resource "aws_iam_role_policy" "s3_read" {
+  name   = "s3-read-policy"
+  role   = aws_iam_role.ec2_s3_read.id
+  policy = data.aws_iam_policy_document.s3_read.json
+}
+
+resource "aws_iam_instance_profile" "ec2_s3_read" {
+  name = "ec2-s3-read-profile"
+  role = aws_iam_role.ec2_s3_read.name
+}
+\`\`\``
+  },
+  {
+    u: "Write Terraform for an Azure resource group and storage account",
+    a: `Azure provider, resource group, and storage account:
+
+\`\`\`hcl
+terraform {
+  required_providers {
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = "~> 3.0"
+    }
+  }
+}
+
+provider "azurerm" {
+  features {}
+}
+
+resource "azurerm_resource_group" "main" {
+  name     = "myapp-rg"
+  location = "East US"
+}
+
+resource "random_string" "s" {
+  length  = 6
+  special = false
+  upper   = false
+}
+
+resource "azurerm_storage_account" "main" {
+  name                     = "myappstorage\${random_string.s.result}"
+  resource_group_name      = azurerm_resource_group.main.name
+  location                 = azurerm_resource_group.main.location
+  account_tier             = "Standard"
+  account_replication_type = "LRS"
+  min_tls_version          = "TLS1_2"
+
+  tags = {
+    Environment = "production"
+  }
+}
+\`\`\``
+  },
+  {
+    u: "Show Terraform variables.tf and outputs.tf example",
+    a: `Inputs in variables.tf, exports in outputs.tf:
+
+\`\`\`hcl
+# variables.tf
+variable "region" {
+  description = "AWS region"
+  type        = string
+  default     = "us-east-1"
+}
+
+variable "instance_count" {
+  description = "Number of instances"
+  type        = number
+  default     = 2
+
+  validation {
+    condition     = var.instance_count > 0
+    error_message = "Must be > 0."
+  }
+}
+
+variable "tags" {
+  description = "Common tags"
+  type        = map(string)
+  default = {
+    Environment = "dev"
+    Owner       = "team"
+  }
+}
+\`\`\`
+
+\`\`\`hcl
+# outputs.tf
+output "instance_ids" {
+  description = "IDs of created EC2 instances"
+  value       = aws_instance.app[*].id
+}
+
+output "public_ips" {
+  description = "Public IPs"
+  value       = aws_instance.app[*].public_ip
+}
+
+output "endpoint" {
+  description = "Application endpoint"
+  value       = "http://\${aws_lb.app.dns_name}"
+}
+\`\`\``
+  },
+  {
+    u: "Create a Terraform module structure with main.tf, variables.tf, and outputs.tf",
+    a: `Module layout and how to call it from a root configuration:
+
+\`\`\`
+modules/
+  vpc/
+    main.tf
+    variables.tf
+    outputs.tf
+main.tf  # root
+\`\`\`
+
+\`\`\`hcl
+# modules/vpc/variables.tf
+variable "cidr_block" { type = string }
+variable "name"       { type = string }
+
+# modules/vpc/main.tf
+resource "aws_vpc" "this" {
+  cidr_block = var.cidr_block
+  tags = { Name = var.name }
+}
+
+# modules/vpc/outputs.tf
+output "vpc_id" {
+  value = aws_vpc.this.id
+}
+
+# main.tf (root)
+module "prod_vpc" {
+  source     = "./modules/vpc"
+  cidr_block = "10.0.0.0/16"
+  name       = "prod-vpc"
+}
+
+output "vpc_id" {
+  value = module.prod_vpc.vpc_id
+}
+\`\`\``
+  },
+  {
+    u: "Configure a Terraform S3 backend for remote state with DynamoDB locking",
+    a: `Store state in S3 with DynamoDB-based state locking:
+
+\`\`\`hcl
+terraform {
+  backend "s3" {
+    bucket         = "my-terraform-state-bucket"
+    key            = "prod/network/terraform.tfstate"
+    region         = "us-east-1"
+    encrypt        = true
+    dynamodb_table = "terraform-state-locks"
+  }
+}
+\`\`\`
+
+The bucket and table must exist beforehand. Create the lock table with:
+
+\`\`\`hcl
+resource "aws_dynamodb_table" "tf_locks" {
+  name         = "terraform-state-locks"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "LockID"
+
+  attribute {
+    name = "LockID"
+    type = "S"
+  }
+}
+\`\`\`
+
+Then run \`terraform init\`.`
+  },
+  {
+    u: "Write Terraform for an AWS RDS PostgreSQL database",
+    a: `RDS instance in a private subnet group with a dedicated security group:
+
+\`\`\`hcl
+resource "aws_db_subnet_group" "main" {
+  name       = "main-db-subnet"
+  subnet_ids = [aws_subnet.private_a.id, aws_subnet.private_b.id]
+}
+
+resource "aws_security_group" "db" {
+  name   = "db-sg"
+  vpc_id = aws_vpc.main.id
+
+  ingress {
+    from_port       = 5432
+    to_port         = 5432
+    protocol        = "tcp"
+    security_groups = [aws_security_group.app.id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+resource "aws_db_instance" "main" {
+  identifier                = "myapp-prod"
+  engine                    = "postgres"
+  engine_version            = "16.3"
+  instance_class            = "db.t3.micro"
+  allocated_storage         = 20
+  storage_encrypted         = true
+  db_name                   = "myapp"
+  username                  = "appuser"
+  password                  = var.db_password
+  db_subnet_group_name      = aws_db_subnet_group.main.name
+  vpc_security_group_ids    = [aws_security_group.db.id]
+  skip_final_snapshot       = false
+  final_snapshot_identifier = "myapp-final-snapshot"
+  backup_retention_period   = 7
+  publicly_accessible       = false
+}
+\`\`\``
+  },
+  {
+    u: "Create Terraform for an Azure AKS cluster with a node pool",
+    a: `AKS cluster with a system pool and a separate user node pool:
+
+\`\`\`hcl
+resource "azurerm_resource_group" "aks" {
+  name     = "myapp-aks-rg"
+  location = "East US"
+}
+
+resource "azurerm_kubernetes_cluster" "main" {
+  name                = "myapp-aks"
+  location            = azurerm_resource_group.aks.location
+  resource_group_name = azurerm_resource_group.aks.name
+  dns_prefix          = "myapp"
+  kubernetes_version  = "1.30.3"
+
+  default_node_pool {
+    name       = "system"
+    node_count = 2
+    vm_size    = "Standard_D2s_v5"
+  }
+
+  identity {
+    type = "SystemAssigned"
+  }
+
+  network_profile {
+    network_plugin = "azure"
+    service_cidr   = "10.100.0.0/16"
+    dns_service_ip = "10.100.0.10"
+  }
+
+  tags = { Environment = "production" }
+}
+
+resource "azurerm_kubernetes_cluster_node_pool" "workloads" {
+  name                  = "workloads"
+  kubernetes_cluster_id = azurerm_kubernetes_cluster.main.id
+  vm_size               = "Standard_D4s_v5"
+  node_count            = 3
+  mode                  = "User"
+}
+
+output "kube_config" {
+  value     = azurerm_kubernetes_cluster.main.kube_config_raw
+  sensitive = true
+}
+\`\`\``
+  },
+
+  // ===== KUBERNETES =====
+  {
+    u: "Write a basic Kubernetes Deployment for an nginx app",
+    a: `Three nginx replicas with resource limits and a liveness probe:
+
+\`\`\`yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx
+  labels:
+    app: nginx
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.27-alpine
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            cpu: 100m
+            memory: 64Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 10
+          periodSeconds: 10
+\`\`\``
+  },
+  {
+    u: "Create a Kubernetes Service to expose an app on port 80",
+    a: `A ClusterIP service for in-cluster access (change type to LoadBalancer for external):
+
+\`\`\`yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx
+spec:
+  type: ClusterIP
+  selector:
+    app: nginx
+  ports:
+  - name: http
+    port: 80
+    targetPort: 80
+    protocol: TCP
+\`\`\``
+  },
+  {
+    u: "Write a Kubernetes ConfigMap and mount it into a deployment",
+    a: `ConfigMap consumed as both env vars and a mounted file:
+
+\`\`\`yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+data:
+  APP_ENV: production
+  LOG_LEVEL: info
+  app.properties: |
+    feature.flag.x=true
+    cache.ttl=60
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: app
+  template:
+    metadata:
+      labels:
+        app: app
+    spec:
+      containers:
+      - name: app
+        image: myapp:1.0
+        envFrom:
+        - configMapRef:
+            name: app-config
+        volumeMounts:
+        - name: config
+          mountPath: /etc/app
+      volumes:
+      - name: config
+        configMap:
+          name: app-config
+\`\`\``
+  },
+  {
+    u: "Create a Kubernetes Secret for database credentials and use it in a pod",
+    a: `Secret with credentials, referenced by env vars in a Deployment:
+
+\`\`\`yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-credentials
+type: Opaque
+stringData:
+  DB_USER: appuser
+  DB_PASSWORD: "s3cret-password"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: app }
+  template:
+    metadata:
+      labels: { app: app }
+    spec:
+      containers:
+      - name: app
+        image: myapp:1.0
+        env:
+        - name: DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: db-credentials
+              key: DB_USER
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: db-credentials
+              key: DB_PASSWORD
+\`\`\`
+
+For production, sync from a real secret store (Vault, AWS Secrets Manager, External Secrets Operator) rather than committing secrets to Git.`
+  },
+  {
+    u: "Write a Kubernetes Ingress with TLS",
+    a: `Ingress routing two paths with a TLS cert from a Secret:
+
+\`\`\`yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: app-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - app.example.com
+    secretName: app-tls
+  rules:
+  - host: app.example.com
+    http:
+      paths:
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: api
+            port:
+              number: 8080
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: web
+            port:
+              number: 80
+\`\`\`
+
+Use cert-manager with a ClusterIssuer (e.g. Let's Encrypt) to issue \`app-tls\` automatically.`
+  },
+  {
+    u: "Create a Kubernetes HorizontalPodAutoscaler that scales on CPU and memory",
+    a: `HPA scaling between 2 and 10 replicas on CPU and memory utilization:
+
+\`\`\`yaml
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: app-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: app
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+\`\`\`
+
+Requires metrics-server installed in the cluster.`
+  },
+  {
+    u: "Write a Kubernetes PersistentVolumeClaim and mount it in a pod",
+    a: `A 10Gi PVC bound to the cluster's default storage class, mounted in a deployment:
+
+\`\`\`yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: data
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 10Gi
+  # storageClassName: gp3   # optionally pin to a class
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: app } }
+  template:
+    metadata: { labels: { app: app } }
+    spec:
+      containers:
+      - name: app
+        image: myapp:1.0
+        volumeMounts:
+        - name: data
+          mountPath: /var/data
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: data
+\`\`\``
+  },
+  {
+    u: "Create a Kubernetes CronJob that runs a backup every night at 2am",
+    a: `Nightly CronJob with concurrency control and history limits:
+
+\`\`\`yaml
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: nightly-backup
+spec:
+  schedule: "0 2 * * *"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: backup
+            image: my-backup:1.0
+            command: ["/usr/local/bin/backup.sh"]
+            env:
+            - name: S3_BUCKET
+              value: my-backups
+\`\`\``
+  },
+  {
+    u: "Create a Kubernetes Namespace, ServiceAccount, Role, and RoleBinding for namespace-scoped RBAC",
+    a: `Namespace-scoped read access to pods and services:
+
+\`\`\`yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: team-app
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: app-reader
+  namespace: team-app
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pod-reader
+  namespace: team-app
+rules:
+- apiGroups: [""]
+  resources: ["pods", "services", "endpoints"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: app-reader-binding
+  namespace: team-app
+subjects:
+- kind: ServiceAccount
+  name: app-reader
+  namespace: team-app
+roleRef:
+  kind: Role
+  name: pod-reader
+  apiGroup: rbac.authorization.k8s.io
+\`\`\``
+  },
+  {
+    u: "Write a Kubernetes NetworkPolicy that only allows traffic from the frontend",
+    a: `Default-deny ingress, then explicitly allow from pods labeled role=frontend:
+
+\`\`\`yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backend-allow-frontend
+  namespace: team-app
+spec:
+  podSelector:
+    matchLabels:
+      role: backend
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          role: frontend
+    ports:
+    - protocol: TCP
+      port: 8080
+\`\`\`
+
+NetworkPolicy is only enforced if your CNI plugin supports it (Calico, Cilium, etc.).`
+  },
+
+  // ===== CI/CD: GITHUB ACTIONS, AZURE DEVOPS, GITLAB, AWS =====
+  {
+    u: "Write a GitHub Actions workflow to test a Python project on multiple versions",
+    a: `Matrix workflow running pytest on Python 3.11 and 3.12:
+
+\`\`\`yaml
+# .github/workflows/test.yml
+name: test
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: \${{ matrix.python-version }}
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov
+      - name: Run tests
+        run: pytest -v --cov=. --cov-report=xml
+\`\`\``
+  },
+  {
+    u: "Create a GitHub Actions workflow that builds and pushes a Docker image to AWS ECR",
+    a: `Uses OIDC for keyless AWS auth, then builds and pushes to ECR:
+
+\`\`\`yaml
+# .github/workflows/docker.yml
+name: build-and-push
+on:
+  push:
+    branches: [main]
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPO: my-app
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/github-actions-deploy
+          aws-region: \${{ env.AWS_REGION }}
+      - name: Login to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      - name: Build and push
+        run: |
+          IMAGE=\${{ steps.ecr.outputs.registry }}/\${{ env.ECR_REPO }}:\${{ github.sha }}
+          docker build -t $IMAGE .
+          docker push $IMAGE
+\`\`\``
+  },
+  {
+    u: "Create a GitHub Actions workflow to deploy to AWS ECS",
+    a: `Build, push to ECR, then update an ECS service via the official AWS actions:
+
+\`\`\`yaml
+# .github/workflows/deploy-ecs.yml
+name: deploy-ecs
+on:
+  push:
+    branches: [main]
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPO: my-app
+  ECS_CLUSTER: prod-cluster
+  ECS_SERVICE: my-app-svc
+  CONTAINER_NAME: app
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/github-actions-deploy
+          aws-region: \${{ env.AWS_REGION }}
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      - id: build
+        run: |
+          IMAGE=\${{ steps.ecr.outputs.registry }}/\${{ env.ECR_REPO }}:\${{ github.sha }}
+          docker build -t $IMAGE .
+          docker push $IMAGE
+          echo "image=$IMAGE" >> $GITHUB_OUTPUT
+      - id: task
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: ecs-task-def.json
+          container-name: \${{ env.CONTAINER_NAME }}
+          image: \${{ steps.build.outputs.image }}
+      - uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: \${{ steps.task.outputs.task-definition }}
+          service: \${{ env.ECS_SERVICE }}
+          cluster: \${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
+\`\`\``
+  },
+  {
+    u: "Write a GitHub Actions workflow to deploy a web app to Azure App Service",
+    a: `Build, then deploy using azure/webapps-deploy with OIDC federated credentials:
+
+\`\`\`yaml
+# .github/workflows/deploy-azure.yml
+name: deploy-azure
+on:
+  push:
+    branches: [main]
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AZURE_WEBAPP_NAME: my-app
+  NODE_VERSION: "20.x"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: \${{ env.NODE_VERSION }}
+          cache: npm
+      - name: Build
+        run: |
+          npm ci
+          npm run build --if-present
+          npm test --if-present
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: \${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: \${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: \${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Deploy to App Service
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: \${{ env.AZURE_WEBAPP_NAME }}
+          package: .
+\`\`\``
+  },
+  {
+    u: "Write an Azure DevOps YAML pipeline for a Node.js build and test",
+    a: `Multi-stage starter pipeline: build, lint, test, publish artifacts:
+
+\`\`\`yaml
+# azure-pipelines.yml
+trigger:
+  branches: { include: [main] }
+pr:
+  branches: { include: [main] }
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  nodeVersion: "20.x"
+
+stages:
+- stage: BuildTest
+  jobs:
+  - job: BuildAndTest
+    steps:
+    - task: NodeTool@0
+      inputs:
+        versionSpec: $(nodeVersion)
+    - script: npm ci
+      displayName: Install deps
+    - script: npm run lint
+      displayName: Lint
+    - script: |
+        npm test -- --reporter=junit --reporter-options output=test-results.xml
+      displayName: Run tests
+    - task: PublishTestResults@2
+      condition: succeededOrFailed()
+      inputs:
+        testResultsFormat: JUnit
+        testResultsFiles: "**/test-results.xml"
+    - script: npm run build
+      displayName: Build
+    - task: PublishBuildArtifacts@1
+      inputs:
+        PathtoPublish: dist
+        ArtifactName: drop
+\`\`\``
+  },
+  {
+    u: "Create an Azure DevOps multi-stage pipeline to build and deploy to AKS",
+    a: `Build and push to ACR, then deploy manifests to AKS:
+
+\`\`\`yaml
+# azure-pipelines.yml
+trigger: [main]
+
+variables:
+  acrName: myacr
+  imageName: myapp
+  k8sNamespace: production
+  aksConnection: my-aks-service-connection
+
+stages:
+- stage: Build
+  jobs:
+  - job: BuildPush
+    pool: { vmImage: ubuntu-latest }
+    steps:
+    - task: Docker@2
+      inputs:
+        containerRegistry: $(acrName)
+        repository: $(imageName)
+        command: buildAndPush
+        Dockerfile: Dockerfile
+        tags: |
+          $(Build.BuildId)
+          latest
+
+- stage: Deploy
+  dependsOn: Build
+  jobs:
+  - deployment: ToAks
+    environment: production.$(k8sNamespace)
+    pool: { vmImage: ubuntu-latest }
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: KubernetesManifest@1
+            inputs:
+              action: deploy
+              kubernetesServiceConnection: $(aksConnection)
+              namespace: $(k8sNamespace)
+              manifests: |
+                k8s/deployment.yaml
+                k8s/service.yaml
+              containers: $(acrName).azurecr.io/$(imageName):$(Build.BuildId)
+\`\`\``
+  },
+  {
+    u: "Write a GitHub Actions workflow that runs terraform plan on PRs and terraform apply on main",
+    a: `Plan-on-PR and apply-on-main pattern with environment protection:
+
+\`\`\`yaml
+# .github/workflows/terraform.yml
+name: terraform
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+env:
+  AWS_REGION: us-east-1
+  TF_VERSION: 1.9.5
+
+jobs:
+  plan:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/tf-plan
+          aws-region: \${{ env.AWS_REGION }}
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: \${{ env.TF_VERSION }}
+      - run: terraform init
+      - run: terraform fmt -check
+      - run: terraform validate
+      - run: terraform plan -no-color -out=tfplan
+
+  apply:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/tf-apply
+          aws-region: \${{ env.AWS_REGION }}
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: \${{ env.TF_VERSION }}
+      - run: terraform init
+      - run: terraform apply -auto-approve
+\`\`\``
+  },
+  {
+    u: "Create a GitLab CI pipeline that builds with kaniko and deploys to Kubernetes",
+    a: `Three stages (build, test, deploy) using kaniko to build images in-cluster:
+
+\`\`\`yaml
+# .gitlab-ci.yml
+stages: [build, test, deploy]
+
+variables:
+  IMAGE: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
+
+build:
+  stage: build
+  image:
+    name: gcr.io/kaniko-project/executor:v1.23.2-debug
+    entrypoint: [""]
+  script:
+    - /kaniko/executor --context $CI_PROJECT_DIR --dockerfile Dockerfile --destination $IMAGE
+
+test:
+  stage: test
+  image: python:3.12-slim
+  script:
+    - pip install -r requirements.txt pytest
+    - pytest -v
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+deploy:
+  stage: deploy
+  image: bitnami/kubectl:1.30
+  environment: production
+  script:
+    - kubectl set image deployment/app app=$IMAGE -n production
+    - kubectl rollout status deployment/app -n production --timeout=5m
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+\`\`\``
+  },
+  {
+    u: "Write a GitHub Actions workflow with a manual approval gate before production",
+    a: `Use protected environments with required reviewers for the production deploy:
+
+\`\`\`yaml
+# .github/workflows/release.yml
+name: release
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      image: \${{ steps.build.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: build
+        run: |
+          IMAGE=ghcr.io/\${{ github.repository }}:\${{ github.sha }}
+          echo "image=$IMAGE" >> $GITHUB_OUTPUT
+          docker build -t $IMAGE .
+
+  deploy-staging:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - run: echo "Deploying \${{ needs.build.outputs.image }} to staging"
+
+  deploy-production:
+    needs: deploy-staging
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - run: echo "Deploying \${{ needs.build.outputs.image }} to production"
+\`\`\`
+
+In **Settings → Environments → production**, configure required reviewers. The deploy-production job will pause until approval.`
+  },
+  {
+    u: "Write a complete GitHub Actions workflow that lints, tests, scans, builds, and deploys",
+    a: `End-to-end CI/CD with parallel jobs and dependencies:
+
+\`\`\`yaml
+# .github/workflows/cicd.yml
+name: cicd
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  id-token: write
+  contents: read
+  security-events: write
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20.x, cache: npm }
+      - run: npm ci
+      - run: npm run lint
+
+  test:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20.x, cache: npm }
+      - run: npm ci
+      - run: npm test -- --coverage
+
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          format: sarif
+          output: trivy-results.sarif
+      - uses: github/codeql-action/upload-sarif@v3
+        with: { sarif_file: trivy-results.sarif }
+
+  build:
+    runs-on: ubuntu-latest
+    needs: [test, security-scan]
+    if: github.ref == 'refs/heads/main'
+    outputs:
+      image: \${{ steps.meta.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/gh-deploy
+          aws-region: us-east-1
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      - id: meta
+        run: echo "image=\${{ steps.ecr.outputs.registry }}/myapp:\${{ github.sha }}" >> $GITHUB_OUTPUT
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: \${{ steps.meta.outputs.image }}
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    environment: production
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/gh-deploy
+          aws-region: us-east-1
+      - run: aws ecs update-service --cluster prod --service myapp --force-new-deployment
+\`\`\``
+  },
+
+  // ===== NETWORK / SECURITY / ROLES =====
+  {
+    u: "Create an AWS Security Group that allows HTTPS from anywhere and SSH only from my office IP",
+    a: `Two ingress rules with explicit CIDRs and an open egress:
+
+\`\`\`hcl
+variable "office_cidr" {
+  type    = string
+  default = "203.0.113.0/24"
+}
+
+resource "aws_security_group" "web" {
+  name        = "web-sg"
+  description = "HTTPS public, SSH office-only"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description = "HTTPS from anywhere"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    description = "SSH from office"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = [var.office_cidr]
+  }
+
+  egress {
+    description = "All outbound"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = { Name = "web-sg" }
+}
+\`\`\``
+  },
+  {
+    u: "Write an AWS IAM policy granting read-only access to a specific S3 bucket",
+    a: `Policy document with bucket-level and object-level read actions:
+
+\`\`\`hcl
+data "aws_iam_policy_document" "s3_readonly" {
+  statement {
+    sid     = "ListBucket"
+    effect  = "Allow"
+    actions = ["s3:GetBucketLocation", "s3:ListBucket"]
+    resources = ["arn:aws:s3:::my-data-bucket"]
+  }
+
+  statement {
+    sid     = "ReadObjects"
+    effect  = "Allow"
+    actions = ["s3:GetObject", "s3:GetObjectVersion"]
+    resources = ["arn:aws:s3:::my-data-bucket/*"]
+  }
+}
+
+resource "aws_iam_policy" "s3_readonly" {
+  name        = "s3-readonly-mydata"
+  description = "Read-only access to my-data-bucket"
+  policy      = data.aws_iam_policy_document.s3_readonly.json
+}
+
+resource "aws_iam_role_policy_attachment" "attach" {
+  role       = aws_iam_role.app.name
+  policy_arn = aws_iam_policy.s3_readonly.arn
+}
+\`\`\``
+  },
+  {
+    u: "Create an Azure Network Security Group with rules for a web application",
+    a: `NSG allowing HTTPS/HTTP from the internet and SSH only from a bastion subnet:
+
+\`\`\`hcl
+resource "azurerm_network_security_group" "web" {
+  name                = "web-nsg"
+  location            = azurerm_resource_group.main.location
+  resource_group_name = azurerm_resource_group.main.name
+
+  security_rule {
+    name                       = "AllowHTTPS"
+    priority                   = 100
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "443"
+    source_address_prefix      = "Internet"
+    destination_address_prefix = "*"
+  }
+
+  security_rule {
+    name                       = "AllowHTTP"
+    priority                   = 110
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "80"
+    source_address_prefix      = "Internet"
+    destination_address_prefix = "*"
+  }
+
+  security_rule {
+    name                       = "AllowSSHFromBastion"
+    priority                   = 120
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "22"
+    source_address_prefix      = "10.0.100.0/24"
+    destination_address_prefix = "*"
+  }
+
+  security_rule {
+    name                       = "DenyAllInbound"
+    priority                   = 4096
+    direction                  = "Inbound"
+    access                     = "Deny"
+    protocol                   = "*"
+    source_port_range          = "*"
+    destination_port_range     = "*"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+}
+
+resource "azurerm_subnet_network_security_group_association" "web" {
+  subnet_id                 = azurerm_subnet.web.id
+  network_security_group_id = azurerm_network_security_group.web.id
+}
+\`\`\``
+  },
+  {
+    u: "Write a Kubernetes ClusterRole and ClusterRoleBinding for cluster-wide read-only access",
+    a: `A view-style ClusterRole bound to a ServiceAccount:
+
+\`\`\`yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: read-only-user
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cluster-reader
+rules:
+- apiGroups: [""]
+  resources: ["*"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apps", "batch", "extensions", "networking.k8s.io"]
+  resources: ["*"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cluster-reader-binding
+subjects:
+- kind: ServiceAccount
+  name: read-only-user
+  namespace: kube-system
+roleRef:
+  kind: ClusterRole
+  name: cluster-reader
+  apiGroup: rbac.authorization.k8s.io
+\`\`\`
+
+Generate a token for that ServiceAccount with \`kubectl create token read-only-user -n kube-system\`.`
+  },
+  {
+    u: "Configure AWS WAF rules to block common web attacks",
+    a: `WAFv2 WebACL using AWS managed rule groups plus a rate limit:
+
+\`\`\`hcl
+resource "aws_wafv2_web_acl" "main" {
+  name        = "app-waf"
+  description = "Block common attacks"
+  scope       = "REGIONAL"
+
+  default_action { allow {} }
+
+  rule {
+    name     = "AWSManagedRulesCommonRuleSet"
+    priority = 1
+    override_action { none {} }
+    statement {
+      managed_rule_group_statement {
+        name        = "AWSManagedRulesCommonRuleSet"
+        vendor_name = "AWS"
+      }
+    }
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "CommonRules"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  rule {
+    name     = "AWSManagedRulesSQLiRuleSet"
+    priority = 2
+    override_action { none {} }
+    statement {
+      managed_rule_group_statement {
+        name        = "AWSManagedRulesSQLiRuleSet"
+        vendor_name = "AWS"
+      }
+    }
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "SQLi"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  rule {
+    name     = "RateLimit"
+    priority = 3
+    action { block {} }
+    statement {
+      rate_based_statement {
+        limit              = 2000
+        aggregate_key_type = "IP"
+      }
+    }
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "RateLimit"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  visibility_config {
+    cloudwatch_metrics_enabled = true
+    metric_name                = "app-waf"
+    sampled_requests_enabled   = true
+  }
+}
+
+resource "aws_wafv2_web_acl_association" "alb" {
+  resource_arn = aws_lb.app.arn
+  web_acl_arn  = aws_wafv2_web_acl.main.arn
+}
+\`\`\``
+  },
+
+  // ===== META: OLLAMA / GGUF / LORA (the original set) =====
   { u: "What is LoRA fine-tuning?", a: "LoRA (Low-Rank Adaptation) freezes the original model weights and trains small low-rank decomposition matrices injected into each transformer layer. This drastically reduces trainable parameters (often <1%) and lets you fine-tune large models on consumer GPUs." },
   { u: "What is the GGUF format?", a: "GGUF is the binary file format used by llama.cpp and tools built on it (like Ollama). It bundles model weights, tokenizer, and metadata into a single mmap-friendly file, and supports many quantization levels (q4_k_m, q5_k_m, q8_0, etc.) for efficient CPU and GPU inference." },
   { u: "How do I run a GGUF model in Ollama?", a: "Create a file named 'Modelfile' with a FROM line pointing at your .gguf, plus any TEMPLATE, SYSTEM, and PARAMETER directives. Then run: ollama create my-model -f Modelfile, followed by: ollama run my-model." },
-  { u: "How much data do I need to fine-tune a small model?", a: "For task-specific behavior with LoRA, 100–1000 high-quality examples is often enough. Quality, diversity, and consistency matter far more than raw volume. Noisy or contradictory examples will hurt the model." },
-  { u: "What quantization should I use for GGUF?", a: "q4_k_m is the most popular balance of size and quality for general use. q5_k_m is slightly better quality. q8_0 is near-lossless but ~2x the size. Use q3 or q2 only when memory is extremely constrained — quality drops noticeably." },
-  { u: "What's the difference between a base model and an instruct model?", a: "A base model is trained on raw text and predicts the next token. An instruct (or chat) model has been further fine-tuned on conversation pairs so it follows instructions. For most fine-tuning projects you start from an instruct model and adapt its behavior." },
-  { u: "Can I merge a LoRA adapter back into the base model?", a: "Yes. With the peft library: model = model.merge_and_unload(). This produces a standalone model with the LoRA deltas folded in. After merging, convert to GGUF with llama.cpp's convert_hf_to_gguf.py script." }
+  { u: "How much data do I need to fine-tune a small model?", a: "For task-specific behavior with LoRA, 100-1000 high-quality examples is often enough. Quality, diversity, and consistency matter far more than raw volume. Noisy or contradictory examples will hurt the model." },
+  { u: "What quantization should I use for GGUF?", a: "q4_k_m is the most popular balance of size and quality for general use. q5_k_m is slightly better quality. q8_0 is near-lossless but ~2x the size. Use q3 or q2 only when memory is extremely constrained, since quality drops noticeably." },
 ];
 
 document.getElementById('btn-load-samples').addEventListener('click', () => {
