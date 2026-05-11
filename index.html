@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>SLM Training Data Generator — Ollama / GGUF / LoRA</title>
 <script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -291,6 +292,9 @@ $ ollama run my-slm</pre>
       <button data-tab="io" class="tab-btn px-4 sm:px-6 py-3 text-sm font-medium whitespace-nowrap hover:bg-ibm-gray10 dark:hover:bg-ibm-gray90">
         <span class="mono text-xs text-ibm-blue60 dark:text-ibm-blue40 mr-1">↕</span> Import / Export
       </button>
+      <button data-tab="deploy" class="tab-btn px-4 sm:px-6 py-3 text-sm font-medium whitespace-nowrap hover:bg-ibm-gray10 dark:hover:bg-ibm-gray90">
+        <span class="mono text-xs text-ibm-blue60 dark:text-ibm-blue40 mr-1">⎈</span> Deploy
+      </button>
     </div>
 
     <!-- TAB: ADD ENTRY -->
@@ -479,6 +483,179 @@ $ ollama run my-slm</pre>
         <h4 class="text-xs mono uppercase tracking-wider mb-3">Live preview (first 5 entries as JSONL)</h4>
         <pre id="jsonl-preview" class="code mono text-xs whitespace-pre-wrap break-all max-h-64 overflow-y-auto">(empty)</pre>
       </div>
+    </div>
+
+    <!-- TAB: DEPLOY (Docker training kit) -->
+    <div data-panel="deploy" class="hidden space-y-6">
+      <div class="bg-ibm-blue10 dark:bg-ibm-blue90/30 border-l-2 border-ibm-blue60 p-4 text-sm">
+        <strong>Deploy locally with Docker.</strong> Configure your training run below, then download a complete kit (Dockerfile, compose file, training script, GGUF converter, Modelfile, README) bundled with your current dataset. Unzip, <span class="mono">docker compose up</span>, and you'll have a fine-tuned GGUF model loaded into Ollama.
+      </div>
+
+      <!-- Config grid -->
+      <div class="grid md:grid-cols-2 gap-6">
+
+        <!-- Model & Ollama -->
+        <div class="space-y-4">
+          <h4 class="text-xs mono uppercase tracking-wider border-b border-ibm-gray20 dark:border-ibm-gray80 pb-2">Model</h4>
+
+          <div>
+            <label class="block text-xs mono uppercase tracking-wider mb-2 text-ibm-gray70 dark:text-ibm-gray30">Base model</label>
+            <select id="cfg-base" class="carbon w-full px-3 py-2 bg-ibm-gray10 dark:bg-ibm-gray90 border-b-2 border-ibm-gray50 focus:border-ibm-blue60 text-sm">
+              <option value="HuggingFaceTB/SmolLM2-360M-Instruct">SmolLM2-360M-Instruct (smallest, fastest, CPU-trainable)</option>
+              <option value="Qwen/Qwen2.5-0.5B-Instruct" selected>Qwen2.5-0.5B-Instruct (recommended starter)</option>
+              <option value="HuggingFaceTB/SmolLM2-1.7B-Instruct">SmolLM2-1.7B-Instruct</option>
+              <option value="Qwen/Qwen2.5-1.5B-Instruct">Qwen2.5-1.5B-Instruct</option>
+              <option value="TinyLlama/TinyLlama-1.1B-Chat-v1.0">TinyLlama-1.1B-Chat</option>
+              <option value="meta-llama/Llama-3.2-1B-Instruct">Llama-3.2-1B-Instruct (HF auth required)</option>
+              <option value="meta-llama/Llama-3.2-3B-Instruct">Llama-3.2-3B-Instruct (HF auth required)</option>
+            </select>
+            <p class="text-[10px] text-ibm-gray70 dark:text-ibm-gray30 mt-1">Smaller = faster training, less VRAM. 0.5B works on a 6GB GPU.</p>
+          </div>
+
+          <div>
+            <label class="block text-xs mono uppercase tracking-wider mb-2 text-ibm-gray70 dark:text-ibm-gray30">Ollama model name</label>
+            <input id="cfg-ollama-name" type="text" value="my-slm"
+              class="carbon w-full px-3 py-2 bg-ibm-gray10 dark:bg-ibm-gray90 border-b-2 border-ibm-gray50 focus:border-ibm-blue60 text-sm mono">
+          </div>
+
+          <div>
+            <label class="block text-xs mono uppercase tracking-wider mb-2 text-ibm-gray70 dark:text-ibm-gray30">System prompt</label>
+            <textarea id="cfg-system" rows="2"
+              class="carbon w-full px-3 py-2 bg-ibm-gray10 dark:bg-ibm-gray90 border-b-2 border-ibm-gray50 focus:border-ibm-blue60 text-sm">You are a helpful, concise assistant.</textarea>
+          </div>
+
+          <div>
+            <label class="block text-xs mono uppercase tracking-wider mb-2 text-ibm-gray70 dark:text-ibm-gray30">Quantization</label>
+            <select id="cfg-quant" class="carbon w-full px-3 py-2 bg-ibm-gray10 dark:bg-ibm-gray90 border-b-2 border-ibm-gray50 focus:border-ibm-blue60 text-sm">
+              <option value="q4_k_m" selected>q4_k_m — 4-bit, balanced (recommended)</option>
+              <option value="q5_k_m">q5_k_m — 5-bit, higher quality</option>
+              <option value="q8_0">q8_0 — 8-bit, near-lossless</option>
+              <option value="q3_k_m">q3_k_m — 3-bit, smallest</option>
+              <option value="f16">f16 — no quantization</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- LoRA & Training -->
+        <div class="space-y-4">
+          <h4 class="text-xs mono uppercase tracking-wider border-b border-ibm-gray20 dark:border-ibm-gray80 pb-2">LoRA & Training</h4>
+
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block text-xs mono uppercase tracking-wider mb-2 text-ibm-gray70 dark:text-ibm-gray30">LoRA r</label>
+              <input id="cfg-lora-r" type="number" value="8" min="1" max="64"
+                class="carbon w-full px-3 py-2 bg-ibm-gray10 dark:bg-ibm-gray90 border-b-2 border-ibm-gray50 focus:border-ibm-blue60 text-sm mono">
+            </div>
+            <div>
+              <label class="block text-xs mono uppercase tracking-wider mb-2 text-ibm-gray70 dark:text-ibm-gray30">LoRA alpha</label>
+              <input id="cfg-lora-alpha" type="number" value="16" min="1" max="128"
+                class="carbon w-full px-3 py-2 bg-ibm-gray10 dark:bg-ibm-gray90 border-b-2 border-ibm-gray50 focus:border-ibm-blue60 text-sm mono">
+            </div>
+          </div>
+
+          <div class="grid grid-cols-3 gap-2">
+            <div>
+              <label class="block text-xs mono uppercase tracking-wider mb-2 text-ibm-gray70 dark:text-ibm-gray30">Epochs</label>
+              <input id="cfg-epochs" type="number" value="3" min="1" max="50"
+                class="carbon w-full px-3 py-2 bg-ibm-gray10 dark:bg-ibm-gray90 border-b-2 border-ibm-gray50 focus:border-ibm-blue60 text-sm mono">
+            </div>
+            <div>
+              <label class="block text-xs mono uppercase tracking-wider mb-2 text-ibm-gray70 dark:text-ibm-gray30">Batch</label>
+              <input id="cfg-batch" type="number" value="2" min="1" max="32"
+                class="carbon w-full px-3 py-2 bg-ibm-gray10 dark:bg-ibm-gray90 border-b-2 border-ibm-gray50 focus:border-ibm-blue60 text-sm mono">
+            </div>
+            <div>
+              <label class="block text-xs mono uppercase tracking-wider mb-2 text-ibm-gray70 dark:text-ibm-gray30">LR</label>
+              <input id="cfg-lr" type="text" value="2e-4"
+                class="carbon w-full px-3 py-2 bg-ibm-gray10 dark:bg-ibm-gray90 border-b-2 border-ibm-gray50 focus:border-ibm-blue60 text-sm mono">
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs mono uppercase tracking-wider mb-2 text-ibm-gray70 dark:text-ibm-gray30">Hardware target</label>
+            <select id="cfg-hw" class="carbon w-full px-3 py-2 bg-ibm-gray10 dark:bg-ibm-gray90 border-b-2 border-ibm-gray50 focus:border-ibm-blue60 text-sm">
+              <option value="cuda" selected>NVIDIA GPU (CUDA)</option>
+              <option value="cpu">CPU only (slow but works anywhere)</option>
+            </select>
+            <p class="text-[10px] text-ibm-gray70 dark:text-ibm-gray30 mt-1">CUDA requires NVIDIA Container Toolkit on the host.</p>
+          </div>
+
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input id="cfg-include-data" type="checkbox" checked class="accent-ibm-blue60">
+            <span>Bundle current dataset (<span id="cfg-data-count">0</span> entries) into the kit</span>
+          </label>
+
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input id="cfg-include-ollama" type="checkbox" checked class="accent-ibm-blue60">
+            <span>Include Ollama service in docker-compose</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- File tree preview -->
+      <div class="border border-ibm-gray20 dark:border-ibm-gray80 p-4">
+        <h4 class="text-xs mono uppercase tracking-wider mb-3">Kit contents</h4>
+<pre class="mono text-xs leading-relaxed text-ibm-gray70 dark:text-ibm-gray30">slm-training-kit/
+├── docker-compose.yml      <span class="text-ibm-blue60">orchestrate trainer + ollama services</span>
+├── Dockerfile              <span class="text-ibm-blue60">PyTorch + PEFT + llama.cpp toolchain</span>
+├── train.py                <span class="text-ibm-blue60">LoRA fine-tune on JSONL chat data</span>
+├── convert.sh              <span class="text-ibm-blue60">merge adapter → GGUF → quantize</span>
+├── run_all.sh              <span class="text-ibm-blue60">one-command pipeline</span>
+├── Modelfile               <span class="text-ibm-blue60">Ollama model definition</span>
+├── README.md               <span class="text-ibm-blue60">step-by-step instructions</span>
+├── .env.example            <span class="text-ibm-blue60">HF_TOKEN, config overrides</span>
+└── data/
+    └── training.jsonl      <span class="text-ibm-blue60">your dataset</span></pre>
+      </div>
+
+      <!-- Download actions -->
+      <div class="grid md:grid-cols-2 gap-4">
+        <button id="btn-download-zip" class="px-6 py-4 bg-ibm-blue60 hover:bg-ibm-blue70 text-white text-sm btn-primary text-left flex items-center justify-between gap-3">
+          <span>
+            <span class="block font-semibold">Download training kit (.zip)</span>
+            <span class="block text-xs opacity-80 mono">slm-training-kit.zip — recommended</span>
+          </span>
+          <span class="mono text-2xl">↓</span>
+        </button>
+        <details class="border border-ibm-gray20 dark:border-ibm-gray80">
+          <summary class="px-4 py-3 cursor-pointer text-sm hover:bg-ibm-gray10 dark:hover:bg-ibm-gray90 flex items-center justify-between">
+            <span>Or download individual files</span>
+            <span class="mono text-xs">▾</span>
+          </summary>
+          <div class="p-3 border-t border-ibm-gray20 dark:border-ibm-gray80 space-y-1" id="individual-files-list"></div>
+        </details>
+      </div>
+
+      <!-- Run instructions -->
+      <div class="border border-ibm-gray20 dark:border-ibm-gray80">
+        <div class="bg-ibm-gray10 dark:bg-ibm-gray90 px-4 py-2 border-b border-ibm-gray20 dark:border-ibm-gray80 flex items-center justify-between">
+          <span class="text-xs mono uppercase tracking-wider">Run it</span>
+          <span class="text-[10px] mono text-ibm-gray70 dark:text-ibm-gray30">after unzipping</span>
+        </div>
+<pre class="code mono"><span class="c"># 1. Build image and train (LoRA fine-tune on your JSONL)</span>
+$ docker compose run --rm trainer bash run_all.sh
+
+<span class="c"># 2. Register the resulting GGUF with the ollama service</span>
+$ docker compose up -d ollama
+$ docker compose exec ollama ollama create <span id="run-name">my-slm</span> -f /models/Modelfile
+
+<span class="c"># 3. Chat with your fine-tuned model</span>
+$ docker compose exec ollama ollama run <span id="run-name2">my-slm</span>
+
+<span class="c"># Or call the HTTP API at http://localhost:11434</span>
+$ curl http://localhost:11434/api/generate -d '{"model":"<span id="run-name3">my-slm</span>","prompt":"hello"}'</pre>
+      </div>
+
+      <!-- Live config preview -->
+      <details class="border border-ibm-gray20 dark:border-ibm-gray80">
+        <summary class="px-4 py-2 cursor-pointer text-xs mono uppercase tracking-wider hover:bg-ibm-gray10 dark:hover:bg-ibm-gray90">
+          Preview generated files
+        </summary>
+        <div class="border-t border-ibm-gray20 dark:border-ibm-gray80">
+          <div class="flex border-b border-ibm-gray20 dark:border-ibm-gray80 overflow-x-auto" id="preview-tabs"></div>
+          <pre id="preview-pane" class="code mono text-xs max-h-96 overflow-auto whitespace-pre-wrap break-all">Select a file above.</pre>
+        </div>
+      </details>
     </div>
   </section>
 
@@ -959,6 +1136,617 @@ document.getElementById('btn-clear-chat').addEventListener('click', () => {
   chatLog.innerHTML = '<div class="text-center text-xs text-ibm-gray70 dark:text-ibm-gray30 mono">Start a conversation to test your dataset</div>';
   updateMatchPanel({ score: 0, source: null, fallback: false });
 });
+
+// ============================================================
+// DEPLOY: Docker training kit generator
+// ============================================================
+const cfg = {
+  base: document.getElementById('cfg-base'),
+  ollama: document.getElementById('cfg-ollama-name'),
+  system: document.getElementById('cfg-system'),
+  quant: document.getElementById('cfg-quant'),
+  loraR: document.getElementById('cfg-lora-r'),
+  loraAlpha: document.getElementById('cfg-lora-alpha'),
+  epochs: document.getElementById('cfg-epochs'),
+  batch: document.getElementById('cfg-batch'),
+  lr: document.getElementById('cfg-lr'),
+  hw: document.getElementById('cfg-hw'),
+  includeData: document.getElementById('cfg-include-data'),
+  includeOllama: document.getElementById('cfg-include-ollama'),
+};
+
+function getCfg() {
+  return {
+    base: cfg.base.value,
+    ollama: (cfg.ollama.value || 'my-slm').replace(/[^a-z0-9_-]/gi, '-').toLowerCase(),
+    system: cfg.system.value || 'You are a helpful assistant.',
+    quant: cfg.quant.value,
+    loraR: parseInt(cfg.loraR.value) || 8,
+    loraAlpha: parseInt(cfg.loraAlpha.value) || 16,
+    epochs: parseInt(cfg.epochs.value) || 3,
+    batch: parseInt(cfg.batch.value) || 2,
+    lr: cfg.lr.value || '2e-4',
+    hw: cfg.hw.value,
+    includeData: cfg.includeData.checked,
+    includeOllama: cfg.includeOllama.checked,
+  };
+}
+
+// ----- File generators -----
+function fileDockerfile(c) {
+  const cudaBase = c.hw === 'cuda';
+  return `# Auto-generated by SLM Data Generator
+# Trains a LoRA adapter, merges into base, and converts to GGUF.
+
+FROM ${cudaBase ? 'pytorch/pytorch:2.4.1-cuda12.1-cudnn9-runtime' : 'pytorch/pytorch:2.4.1-cpu'}
+
+ENV DEBIAN_FRONTEND=noninteractive \\
+    PIP_NO_CACHE_DIR=1 \\
+    HF_HUB_DISABLE_PROGRESS_BARS=1 \\
+    PYTHONUNBUFFERED=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \\
+        git cmake build-essential ca-certificates curl \\
+    && rm -rf /var/lib/apt/lists/*
+
+# llama.cpp — needed for GGUF conversion + quantization
+RUN git clone --depth=1 https://github.com/ggerganov/llama.cpp /opt/llama.cpp
+RUN cd /opt/llama.cpp && \\
+    cmake -B build -DGGML_CUDA=OFF -DLLAMA_CURL=OFF && \\
+    cmake --build build --config Release -j"$(nproc)" --target llama-quantize
+RUN pip install -r /opt/llama.cpp/requirements.txt
+
+# Fine-tuning stack
+RUN pip install \\
+        "transformers>=4.45,<5" \\
+        "peft>=0.13" \\
+        "datasets>=3.0" \\
+        "accelerate>=0.34" \\
+        "trl>=0.11" \\
+        "sentencepiece" \\
+        "protobuf" \\
+${cudaBase ? '        "bitsandbytes>=0.44" \\\n' : ''}        "tensorboard"
+
+WORKDIR /workspace
+COPY train.py convert.sh run_all.sh Modelfile ./
+RUN chmod +x convert.sh run_all.sh
+
+CMD ["bash", "run_all.sh"]
+`;
+}
+
+function fileCompose(c) {
+  const gpu = c.hw === 'cuda' ? `    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+` : '';
+  const ollama = c.includeOllama ? `
+  ollama:
+    image: ollama/ollama:latest
+    container_name: slm-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+      - ./output:/models:ro
+${c.hw === 'cuda' ? `    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+` : ''}` : '';
+
+  return `# Auto-generated by SLM Data Generator
+# Usage:
+#   docker compose run --rm trainer bash run_all.sh   # train + convert
+#   docker compose up -d ollama                        # serve
+#   docker compose exec ollama ollama create ${c.ollama} -f /models/Modelfile
+
+services:
+  trainer:
+    build: .
+    container_name: slm-trainer
+    env_file:
+      - .env
+    environment:
+      - BASE_MODEL=${c.base}
+      - OLLAMA_MODEL_NAME=${c.ollama}
+      - QUANT=${c.quant}
+      - EPOCHS=${c.epochs}
+      - BATCH=${c.batch}
+      - LR=${c.lr}
+      - LORA_R=${c.loraR}
+      - LORA_ALPHA=${c.loraAlpha}
+    volumes:
+      - ./data:/workspace/data
+      - ./output:/workspace/output
+      - hf_cache:/root/.cache/huggingface
+${gpu}    shm_size: "8gb"
+${ollama}
+volumes:
+  hf_cache:
+${c.includeOllama ? '  ollama_data:\n' : ''}`;
+}
+
+function fileTrainPy(c) {
+  return `"""
+LoRA fine-tune a small language model on chat JSONL data.
+
+Reads:   /workspace/data/training.jsonl
+Writes:  /workspace/output/adapter/
+
+Each JSONL line:
+  {"messages":[{"role":"user","content":"..."},{"role":"assistant","content":"..."}]}
+Optional "system" role at the start of messages is supported.
+"""
+import os, json, argparse
+import torch
+from datasets import Dataset
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from peft import LoraConfig, get_peft_model, TaskType
+from trl import SFTTrainer, SFTConfig
+
+def load_jsonl(path):
+    records = []
+    with open(path, "r", encoding="utf-8") as f:
+        for ln in f:
+            ln = ln.strip()
+            if not ln: continue
+            records.append(json.loads(ln))
+    return records
+
+def main():
+    p = argparse.ArgumentParser()
+    p.add_argument("--base",       default=os.environ.get("BASE_MODEL", "${c.base}"))
+    p.add_argument("--data",       default="/workspace/data/training.jsonl")
+    p.add_argument("--output_dir", default="/workspace/output/adapter")
+    p.add_argument("--epochs",     type=int,   default=int(os.environ.get("EPOCHS", ${c.epochs})))
+    p.add_argument("--batch",      type=int,   default=int(os.environ.get("BATCH", ${c.batch})))
+    p.add_argument("--lr",         type=float, default=float(os.environ.get("LR", ${c.lr})))
+    p.add_argument("--lora_r",     type=int,   default=int(os.environ.get("LORA_R", ${c.loraR})))
+    p.add_argument("--lora_alpha", type=int,   default=int(os.environ.get("LORA_ALPHA", ${c.loraAlpha})))
+    args = p.parse_args()
+
+    print(f"[train] base={args.base}")
+    print(f"[train] data={args.data}")
+    records = load_jsonl(args.data)
+    print(f"[train] {len(records)} training examples")
+    if len(records) < 5:
+        print("[train] WARNING: very small dataset; results will be poor.")
+
+    tokenizer = AutoTokenizer.from_pretrained(args.base, trust_remote_code=True)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+
+    def format_row(ex):
+        msgs = ex["messages"]
+        # If no system, prepend one so the chat template is well-formed for inference too.
+        if not any(m.get("role") == "system" for m in msgs):
+            msgs = [{"role": "system", "content": "${c.system.replace(/"/g, '\\"')}"}] + msgs
+        text = tokenizer.apply_chat_template(msgs, tokenize=False, add_generation_prompt=False)
+        return {"text": text}
+
+    ds = Dataset.from_list(records).map(format_row, remove_columns=["messages"])
+
+    dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float32
+    model = AutoModelForCausalLM.from_pretrained(
+        args.base,
+        torch_dtype=dtype,
+        device_map="auto" if torch.cuda.is_available() else None,
+        trust_remote_code=True,
+    )
+    model.config.use_cache = False
+
+    lora = LoraConfig(
+        r=args.lora_r,
+        lora_alpha=args.lora_alpha,
+        lora_dropout=0.05,
+        bias="none",
+        task_type=TaskType.CAUSAL_LM,
+        target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
+    )
+    model = get_peft_model(model, lora)
+    model.print_trainable_parameters()
+
+    sft_cfg = SFTConfig(
+        output_dir=args.output_dir,
+        num_train_epochs=args.epochs,
+        per_device_train_batch_size=args.batch,
+        gradient_accumulation_steps=2,
+        learning_rate=args.lr,
+        lr_scheduler_type="cosine",
+        warmup_ratio=0.05,
+        logging_steps=5,
+        save_strategy="epoch",
+        save_total_limit=1,
+        bf16=torch.cuda.is_available(),
+        report_to="none",
+        max_seq_length=1024,
+        packing=False,
+        dataset_text_field="text",
+    )
+
+    trainer = SFTTrainer(
+        model=model,
+        tokenizer=tokenizer,
+        train_dataset=ds,
+        args=sft_cfg,
+    )
+    trainer.train()
+    trainer.save_model(args.output_dir)
+    tokenizer.save_pretrained(args.output_dir)
+    print(f"[train] adapter saved -> {args.output_dir}")
+
+if __name__ == "__main__":
+    main()
+`;
+}
+
+function fileConvertSh(c) {
+  return `#!/usr/bin/env bash
+# Merge LoRA adapter into base, convert to GGUF, and quantize.
+set -euo pipefail
+
+BASE="\${BASE_MODEL:-${c.base}}"
+ADAPTER="\${ADAPTER_DIR:-/workspace/output/adapter}"
+MERGED="\${MERGED_DIR:-/workspace/output/merged}"
+GGUF_F16="\${GGUF_F16:-/workspace/output/model-f16.gguf}"
+GGUF_OUT="\${GGUF_OUT:-/workspace/output/model.gguf}"
+QUANT="\${QUANT:-${c.quant}}"
+
+echo "[convert] merging adapter into base model..."
+python - <<PY
+import torch
+from peft import PeftModel
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
+base = AutoModelForCausalLM.from_pretrained(
+    "$BASE", torch_dtype=torch.float16, trust_remote_code=True
+)
+model = PeftModel.from_pretrained(base, "$ADAPTER")
+model = model.merge_and_unload()
+model.save_pretrained("$MERGED", safe_serialization=True)
+AutoTokenizer.from_pretrained("$BASE", trust_remote_code=True).save_pretrained("$MERGED")
+print("[convert] merged -> $MERGED")
+PY
+
+echo "[convert] converting HF -> GGUF (f16)..."
+python /opt/llama.cpp/convert_hf_to_gguf.py "$MERGED" \\
+  --outfile "$GGUF_F16" --outtype f16
+
+if [ "$QUANT" = "f16" ]; then
+  cp "$GGUF_F16" "$GGUF_OUT"
+  echo "[convert] kept f16 (no quantization)"
+else
+  echo "[convert] quantizing -> $QUANT ..."
+  /opt/llama.cpp/build/bin/llama-quantize "$GGUF_F16" "$GGUF_OUT" "$QUANT"
+fi
+
+# Copy the Modelfile alongside the GGUF so ollama can find it
+cp /workspace/Modelfile /workspace/output/Modelfile
+
+echo "[convert] done:"
+ls -lah /workspace/output/*.gguf /workspace/output/Modelfile
+`;
+}
+
+function fileRunAllSh(c) {
+  return `#!/usr/bin/env bash
+# One-command pipeline: train -> merge -> GGUF -> quantize.
+set -euo pipefail
+
+echo "==> Step 1/2: LoRA fine-tune"
+python train.py
+
+echo "==> Step 2/2: Merge + convert to GGUF + quantize"
+bash convert.sh
+
+echo ""
+echo "All done. Next steps (run on the host):"
+echo "  docker compose up -d ollama"
+echo "  docker compose exec ollama ollama create ${c.ollama} -f /models/Modelfile"
+echo "  docker compose exec ollama ollama run ${c.ollama}"
+`;
+}
+
+function fileModelfile(c) {
+  return `# Auto-generated Modelfile for Ollama
+# Usage:
+#   ollama create ${c.ollama} -f Modelfile
+#   ollama run ${c.ollama}
+
+FROM /models/model.gguf
+
+# Chat template — adjust if your base model uses a different format.
+# This ChatML-style template works for Qwen2.5, SmolLM2, and most modern instruct models.
+TEMPLATE """{{ if .System }}<|im_start|>system
+{{ .System }}<|im_end|>
+{{ end }}{{ if .Prompt }}<|im_start|>user
+{{ .Prompt }}<|im_end|>
+{{ end }}<|im_start|>assistant
+{{ .Response }}<|im_end|>
+"""
+
+SYSTEM """${c.system}"""
+
+PARAMETER temperature 0.7
+PARAMETER top_p 0.9
+PARAMETER repeat_penalty 1.1
+PARAMETER stop "<|im_start|>"
+PARAMETER stop "<|im_end|>"
+`;
+}
+
+function fileEnvExample(c) {
+  return `# Copy to .env and fill in as needed.
+# Hugging Face token (required for gated models like Llama)
+HF_TOKEN=
+
+# Optional overrides (defaults come from docker-compose.yml)
+# BASE_MODEL=${c.base}
+# OLLAMA_MODEL_NAME=${c.ollama}
+# QUANT=${c.quant}
+# EPOCHS=${c.epochs}
+# BATCH=${c.batch}
+# LR=${c.lr}
+# LORA_R=${c.loraR}
+# LORA_ALPHA=${c.loraAlpha}
+`;
+}
+
+function fileReadme(c, entryCount) {
+  return `# SLM Training Kit
+
+Fine-tune **${c.base}** with LoRA on your custom dataset, convert to GGUF, and serve through Ollama — all inside Docker.
+
+Generated from the SLM Data Generator with ${entryCount} training example${entryCount===1?'':'s'}.
+
+---
+
+## Prerequisites
+
+- Docker + Docker Compose v2
+${c.hw === 'cuda' ? '- NVIDIA GPU with drivers + [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)\n' : '- CPU-only training is **slow** — expect 10–30+ minutes for a 500MB model on a small dataset\n'}- ~10–20 GB free disk (model cache + outputs)
+- For gated base models (Llama, etc.), a Hugging Face access token
+
+## Quick start
+
+\`\`\`bash
+# 1. Configure (optional — defaults are fine)
+cp .env.example .env
+# edit .env to add HF_TOKEN if you're using a gated model
+
+# 2. Build image and run the full pipeline (train + convert)
+docker compose run --rm trainer bash run_all.sh
+
+# 3. Start Ollama and register the fine-tuned GGUF
+docker compose up -d ollama
+docker compose exec ollama ollama create ${c.ollama} -f /models/Modelfile
+
+# 4. Chat with your model
+docker compose exec ollama ollama run ${c.ollama}
+
+# Or via HTTP API
+curl http://localhost:11434/api/generate -d '{
+  "model": "${c.ollama}",
+  "prompt": "Hello!",
+  "stream": false
+}'
+\`\`\`
+
+## What each file does
+
+| File | Purpose |
+|------|---------|
+| \`docker-compose.yml\` | Defines the \`trainer\` and \`ollama\` services with shared volumes |
+| \`Dockerfile\` | PyTorch + transformers + PEFT + TRL + llama.cpp toolchain |
+| \`train.py\` | Loads JSONL, applies the chat template, LoRA-fine-tunes the base |
+| \`convert.sh\` | Merges adapter into base, converts to GGUF, quantizes |
+| \`run_all.sh\` | Calls train.py then convert.sh |
+| \`Modelfile\` | Ollama model definition (FROM, TEMPLATE, SYSTEM, PARAMETER) |
+| \`data/training.jsonl\` | Your training data (one chat per line) |
+| \`output/\` | Receives adapter, merged model, and final GGUF |
+
+## Configuration
+
+Current settings (edit \`.env\` or docker-compose.yml to change):
+
+| Setting | Value |
+|---------|-------|
+| Base model | \`${c.base}\` |
+| Hardware | ${c.hw === 'cuda' ? 'NVIDIA GPU (CUDA)' : 'CPU'} |
+| LoRA rank (r) | ${c.loraR} |
+| LoRA alpha | ${c.loraAlpha} |
+| Epochs | ${c.epochs} |
+| Batch size | ${c.batch} |
+| Learning rate | ${c.lr} |
+| Quantization | \`${c.quant}\` |
+| Ollama name | \`${c.ollama}\` |
+
+## Run individual steps
+
+Train only:
+\`\`\`bash
+docker compose run --rm trainer python train.py
+\`\`\`
+
+Convert only (after training):
+\`\`\`bash
+docker compose run --rm trainer bash convert.sh
+\`\`\`
+
+## Iterating on your dataset
+
+1. Edit \`data/training.jsonl\` (or regenerate it from the data generator UI)
+2. Re-run the pipeline: \`docker compose run --rm trainer bash run_all.sh\`
+3. Update the Ollama model: \`docker compose exec ollama ollama create ${c.ollama} -f /models/Modelfile\`
+
+## Troubleshooting
+
+- **OOM during training**: lower \`BATCH\` to 1 in \`.env\`, or pick a smaller base model
+- **"401 unauthorized" downloading the base**: set \`HF_TOKEN\` in \`.env\`
+- **Slow on CPU**: switch to the smallest base (\`SmolLM2-360M-Instruct\`) and ≤2 epochs
+- **\`nvidia-smi\` not found in container**: install the NVIDIA Container Toolkit on the host
+
+## What gets produced
+
+After a successful run, \`output/\` contains:
+- \`adapter/\` — the trained LoRA weights (small, ~10–100 MB)
+- \`merged/\` — full model with LoRA merged in (HF format)
+- \`model-f16.gguf\` — unquantized GGUF
+- \`model.gguf\` — final quantized GGUF (this is what Ollama loads)
+- \`Modelfile\` — copied alongside for ollama create
+
+---
+
+Generated by SLM Data Generator. Format: OpenAI/HuggingFace messages JSONL.
+`;
+}
+
+function fileGitignore() {
+  return `output/
+data/.cache/
+.env
+__pycache__/
+*.pyc
+.DS_Store
+`;
+}
+
+// Returns { 'path/in/zip': 'content' }
+function buildFiles(c) {
+  const jsonl = asJSONL();
+  const entryCount = dataset.length;
+  const files = {
+    'Dockerfile':         fileDockerfile(c),
+    'docker-compose.yml': fileCompose(c),
+    'train.py':           fileTrainPy(c),
+    'convert.sh':         fileConvertSh(c),
+    'run_all.sh':         fileRunAllSh(c),
+    'Modelfile':          fileModelfile(c),
+    '.env.example':       fileEnvExample(c),
+    '.gitignore':         fileGitignore(),
+    'README.md':          fileReadme(c, entryCount),
+  };
+  if (c.includeData) {
+    files['data/training.jsonl'] = jsonl || '';
+  }
+  return files;
+}
+
+// ----- Preview tabs -----
+const PREVIEW_FILES = ['Dockerfile','docker-compose.yml','train.py','convert.sh','run_all.sh','Modelfile','README.md','.env.example'];
+let activePreview = 'docker-compose.yml';
+
+function renderPreviewTabs() {
+  const wrap = document.getElementById('preview-tabs');
+  if (!wrap) return;
+  wrap.innerHTML = PREVIEW_FILES.map(f => `
+    <button data-preview="${f}" class="px-3 py-2 text-xs mono whitespace-nowrap hover:bg-ibm-gray10 dark:hover:bg-ibm-gray90 ${f===activePreview ? 'border-b-2 border-ibm-blue60 text-ibm-blue60 dark:text-ibm-blue40' : 'border-b-2 border-transparent text-ibm-gray70 dark:text-ibm-gray30'}">${f}</button>
+  `).join('');
+  wrap.querySelectorAll('button').forEach(b => {
+    b.addEventListener('click', () => {
+      activePreview = b.dataset.preview;
+      renderPreviewTabs();
+      renderPreviewPane();
+    });
+  });
+}
+
+function renderPreviewPane() {
+  const pane = document.getElementById('preview-pane');
+  if (!pane) return;
+  const files = buildFiles(getCfg());
+  pane.textContent = files[activePreview] || '(file not in current preview set)';
+}
+
+// ----- Individual file download list -----
+function renderIndividualList() {
+  const list = document.getElementById('individual-files-list');
+  if (!list) return;
+  const c = getCfg();
+  const files = buildFiles(c);
+  list.innerHTML = Object.keys(files).map(name => `
+    <button data-fname="${name}" class="w-full text-left px-3 py-2 hover:bg-ibm-gray10 dark:hover:bg-ibm-gray90 text-xs flex items-center justify-between">
+      <span class="mono">${name}</span>
+      <span class="text-ibm-blue60 mono">↓</span>
+    </button>
+  `).join('');
+  list.querySelectorAll('button').forEach(b => {
+    b.addEventListener('click', () => {
+      const fname = b.dataset.fname;
+      const blob = new Blob([files[fname]], { type: 'text/plain' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = fname.replace(/\//g, '_');
+      a.click();
+      URL.revokeObjectURL(a.href);
+      toast('Downloaded ' + fname);
+    });
+  });
+}
+
+// ----- ZIP download -----
+async function downloadKitZip() {
+  if (typeof JSZip === 'undefined') {
+    toast('JSZip not loaded — refresh and try again', 'err');
+    return;
+  }
+  const c = getCfg();
+  if (c.includeData && dataset.length === 0) {
+    if (!confirm('Dataset is empty. The kit will include an empty training.jsonl. Continue?')) return;
+  }
+  const files = buildFiles(c);
+  const zip = new JSZip();
+  const root = zip.folder('slm-training-kit');
+  for (const [path, content] of Object.entries(files)) {
+    // Executable bit hint for shell scripts (informational; tar/zip handle it differently)
+    root.file(path, content, { unixPermissions: path.endsWith('.sh') ? '755' : '644' });
+  }
+  // Empty output dir placeholder
+  root.folder('output').file('.gitkeep', '');
+  if (!c.includeData) {
+    root.folder('data').file('.gitkeep', '# place training.jsonl here\n');
+  }
+  const blob = await zip.generateAsync({ type: 'blob', platform: 'UNIX' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'slm-training-kit.zip';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast('Downloaded slm-training-kit.zip');
+}
+
+document.getElementById('btn-download-zip').addEventListener('click', downloadKitZip);
+
+// React to any config change
+function refreshDeployUi() {
+  document.getElementById('cfg-data-count').textContent = dataset.length;
+  const name = getCfg().ollama;
+  document.getElementById('run-name').textContent = name;
+  document.getElementById('run-name2').textContent = name;
+  document.getElementById('run-name3').textContent = name;
+  renderPreviewPane();
+  renderIndividualList();
+}
+
+Object.values(cfg).forEach(el => {
+  el.addEventListener('input', refreshDeployUi);
+  el.addEventListener('change', refreshDeployUi);
+});
+
+// Hook into existing data ops so the Deploy tab stays in sync
+const _origRenderAll = renderAll;
+renderAll = function() { _origRenderAll(); refreshDeployUi(); };
+
+renderPreviewTabs();
 
 // ============================================================
 // INIT
