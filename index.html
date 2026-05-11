@@ -1,0 +1,971 @@
+<!DOCTYPE html>
+<html lang="en" class="light">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SLM Training Data Generator — Ollama / GGUF / LoRA</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script>
+  tailwind.config = {
+    darkMode: 'class',
+    theme: {
+      extend: {
+        fontFamily: {
+          sans: ['"IBM Plex Sans"', 'system-ui', 'sans-serif'],
+          mono: ['"IBM Plex Mono"', 'ui-monospace', 'monospace'],
+        },
+        colors: {
+          ibm: {
+            blue10: '#edf5ff',
+            blue20: '#d0e2ff',
+            blue40: '#78a9ff',
+            blue50: '#4589ff',
+            blue60: '#0f62fe',
+            blue70: '#0043ce',
+            blue80: '#002d9c',
+            blue90: '#001d6c',
+            gray10: '#f4f4f4',
+            gray20: '#e0e0e0',
+            gray30: '#c6c6c6',
+            gray50: '#8d8d8d',
+            gray70: '#525252',
+            gray80: '#393939',
+            gray90: '#262626',
+            gray100: '#161616',
+          }
+        }
+      }
+    }
+  }
+</script>
+<style>
+  html { scroll-behavior: smooth; }
+  body { font-family: 'IBM Plex Sans', sans-serif; }
+  .mono { font-family: 'IBM Plex Mono', monospace; }
+  /* IBM Carbon-style focus ring */
+  input:focus, textarea:focus, select:focus, button:focus-visible {
+    outline: 2px solid #0f62fe;
+    outline-offset: -2px;
+  }
+  /* No rounded corners — IBM Carbon uses sharp edges */
+  .carbon { border-radius: 0 !important; }
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #8d8d8d; }
+  .dark ::-webkit-scrollbar-thumb { background: #525252; }
+  /* Carbon button hover bump */
+  .btn-primary { transition: background-color 70ms cubic-bezier(0,0,0.38,0.9); }
+  /* Subtle grid background */
+  .grid-bg {
+    background-image:
+      linear-gradient(rgba(15,98,254,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(15,98,254,0.04) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+  .dark .grid-bg {
+    background-image:
+      linear-gradient(rgba(120,169,255,0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(120,169,255,0.05) 1px, transparent 1px);
+  }
+  /* Tab underline animation */
+  .tab-btn { position: relative; }
+  .tab-btn.active::after {
+    content: '';
+    position: absolute;
+    left: 0; right: 0; bottom: -1px;
+    height: 3px;
+    background: #0f62fe;
+  }
+  /* Code blocks */
+  pre.code {
+    background: #161616;
+    color: #f4f4f4;
+    padding: 1rem;
+    overflow-x: auto;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    border-left: 3px solid #0f62fe;
+  }
+  pre.code .k { color: #78a9ff; }
+  pre.code .s { color: #a5d6ff; }
+  pre.code .c { color: #8d8d8d; font-style: italic; }
+  /* Chat bubbles */
+  .bubble-user { background: #0f62fe; color: white; }
+  .bubble-bot { background: #e0e0e0; color: #161616; }
+  .dark .bubble-bot { background: #393939; color: #f4f4f4; }
+  /* Toast */
+  .toast {
+    animation: slideIn 200ms ease-out;
+  }
+  @keyframes slideIn {
+    from { transform: translateY(-100%); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+  /* Confidence bar */
+  .conf-bar { transition: width 300ms ease-out; }
+</style>
+</head>
+<body class="bg-white dark:bg-ibm-gray100 text-ibm-gray100 dark:text-ibm-gray10 min-h-screen transition-colors">
+
+<!-- HEADER -->
+<header class="border-b border-ibm-gray20 dark:border-ibm-gray80 bg-white dark:bg-ibm-gray100 sticky top-0 z-40">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
+    <div class="flex items-center gap-3 min-w-0">
+      <div class="w-8 h-8 bg-ibm-blue60 flex items-center justify-center flex-shrink-0">
+        <svg viewBox="0 0 32 32" class="w-5 h-5 text-white" fill="currentColor">
+          <path d="M6 6h4v4H6zM12 6h4v4h-4zM18 6h4v4h-4zM24 6h2v4h-2zM6 12h4v4H6zM18 12h4v4h-4zM24 12h2v4h-2zM6 18h4v4H6zM12 18h4v4h-4zM18 18h4v4h-4zM6 24h20v2H6z"/>
+        </svg>
+      </div>
+      <div class="min-w-0">
+        <h1 class="text-sm sm:text-base font-semibold truncate">SLM Training Data Generator</h1>
+        <p class="text-[10px] sm:text-xs text-ibm-gray70 dark:text-ibm-gray30 mono truncate">JSONL · LoRA · GGUF · Ollama</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-2">
+      <span id="entry-count-badge" class="hidden sm:inline-block text-xs mono px-2 py-1 bg-ibm-blue10 dark:bg-ibm-blue90 text-ibm-blue80 dark:text-ibm-blue20">0 entries</span>
+      <button id="theme-toggle" class="p-2 hover:bg-ibm-gray10 dark:hover:bg-ibm-gray90 transition-colors" aria-label="Toggle theme">
+        <svg id="icon-sun" class="w-5 h-5 hidden dark:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+        <svg id="icon-moon" class="w-5 h-5 block dark:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- TOAST CONTAINER -->
+<div id="toast-container" class="fixed top-20 right-4 z-50 space-y-2"></div>
+
+<main class="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-10 space-y-10">
+
+  <!-- HERO + TUTORIAL -->
+  <section class="grid-bg border border-ibm-gray20 dark:border-ibm-gray80 -mx-4 sm:-mx-6 px-4 sm:px-12 py-10 sm:py-16">
+    <div class="max-w-3xl">
+      <p class="text-xs mono text-ibm-blue60 dark:text-ibm-blue40 mb-3 tracking-wider">/ DATA-CENTRIC AI</p>
+      <h2 class="text-3xl sm:text-5xl font-light leading-tight mb-4">
+        Build the <span class="font-semibold text-ibm-blue60 dark:text-ibm-blue40">training set</span><br>
+        before you train the model.
+      </h2>
+      <p class="text-base sm:text-lg text-ibm-gray70 dark:text-ibm-gray30 leading-relaxed mb-6">
+        A purpose-built generator for JSONL conversation pairs used to LoRA-fine-tune a small language model, convert to GGUF, and serve through Ollama.
+      </p>
+      <div class="flex flex-wrap gap-2">
+        <a href="#tutorial" class="px-4 py-2 bg-ibm-blue60 hover:bg-ibm-blue70 text-white text-sm btn-primary">Read the tutorial</a>
+        <a href="#workspace" class="px-4 py-2 border border-ibm-gray100 dark:border-ibm-gray10 hover:bg-ibm-gray10 dark:hover:bg-ibm-gray90 text-sm">Skip to workspace</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- TUTORIAL -->
+  <section id="tutorial" class="space-y-6">
+    <div class="flex items-center gap-3">
+      <span class="text-xs mono text-ibm-blue60 dark:text-ibm-blue40">01</span>
+      <h3 class="text-2xl font-light">How to train a Small Language Model for Ollama</h3>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-px bg-ibm-gray20 dark:bg-ibm-gray80 border border-ibm-gray20 dark:border-ibm-gray80">
+
+      <article class="bg-white dark:bg-ibm-gray100 p-6">
+        <div class="flex items-baseline gap-2 mb-3">
+          <span class="mono text-xs text-ibm-blue60 dark:text-ibm-blue40">STEP 01</span>
+          <h4 class="font-semibold">Collect conversation pairs</h4>
+        </div>
+        <p class="text-sm text-ibm-gray70 dark:text-ibm-gray30 leading-relaxed mb-3">
+          Each training example is one JSON object on one line — a JSONL file. The schema follows the OpenAI / Hugging Face chat template: a <span class="mono">messages</span> array with role/content turns.
+        </p>
+<pre class="code mono"><span class="c">// One example per line</span>
+{<span class="k">"messages"</span>:[
+  {<span class="k">"role"</span>:<span class="s">"user"</span>,<span class="k">"content"</span>:<span class="s">"What is LoRA?"</span>},
+  {<span class="k">"role"</span>:<span class="s">"assistant"</span>,<span class="k">"content"</span>:<span class="s">"Low-Rank Adaptation..."</span>}
+]}</pre>
+        <p class="text-xs text-ibm-gray70 dark:text-ibm-gray30 mt-3">Aim for 100–1000+ high-quality pairs. Diversity matters more than volume.</p>
+      </article>
+
+      <article class="bg-white dark:bg-ibm-gray100 p-6">
+        <div class="flex items-baseline gap-2 mb-3">
+          <span class="mono text-xs text-ibm-blue60 dark:text-ibm-blue40">STEP 02</span>
+          <h4 class="font-semibold">LoRA fine-tune in PyTorch</h4>
+        </div>
+        <p class="text-sm text-ibm-gray70 dark:text-ibm-gray30 leading-relaxed mb-3">
+          LoRA (Low-Rank Adaptation) freezes the base weights and trains small adapter matrices. You can fine-tune a 1–3B parameter model on a single consumer GPU.
+        </p>
+<pre class="code mono"><span class="c"># Using PEFT + Transformers</span>
+<span class="k">from</span> peft <span class="k">import</span> LoraConfig, get_peft_model
+<span class="k">from</span> transformers <span class="k">import</span> AutoModelForCausalLM
+
+model = AutoModelForCausalLM.from_pretrained(<span class="s">"Qwen/Qwen2.5-1.5B"</span>)
+config = LoraConfig(r=<span class="s">8</span>, lora_alpha=<span class="s">16</span>,
+  target_modules=[<span class="s">"q_proj"</span>,<span class="s">"v_proj"</span>])
+model = get_peft_model(model, config)
+<span class="c"># ... train on your .jsonl ...</span>
+model.save_pretrained(<span class="s">"./adapter"</span>)</pre>
+      </article>
+
+      <article class="bg-white dark:bg-ibm-gray100 p-6">
+        <div class="flex items-baseline gap-2 mb-3">
+          <span class="mono text-xs text-ibm-blue60 dark:text-ibm-blue40">STEP 03</span>
+          <h4 class="font-semibold">Merge & convert to GGUF</h4>
+        </div>
+        <p class="text-sm text-ibm-gray70 dark:text-ibm-gray30 leading-relaxed mb-3">
+          GGUF (GPT-Generated Unified Format) is llama.cpp's binary format — quantized, mmap-friendly, single-file. Merge the LoRA adapter into the base model, then convert.
+        </p>
+<pre class="code mono"><span class="c"># Merge adapter into base</span>
+model = model.merge_and_unload()
+model.save_pretrained(<span class="s">"./merged"</span>)
+
+<span class="c"># Convert with llama.cpp</span>
+$ python convert_hf_to_gguf.py ./merged \
+    --outfile model.gguf --outtype q4_k_m</pre>
+        <p class="text-xs text-ibm-gray70 dark:text-ibm-gray30 mt-3"><span class="mono">q4_k_m</span> ≈ 4-bit, balanced size/quality. Try <span class="mono">q8_0</span> for higher fidelity.</p>
+      </article>
+
+      <article class="bg-white dark:bg-ibm-gray100 p-6">
+        <div class="flex items-baseline gap-2 mb-3">
+          <span class="mono text-xs text-ibm-blue60 dark:text-ibm-blue40">STEP 04</span>
+          <h4 class="font-semibold">Serve with Ollama Modelfile</h4>
+        </div>
+        <p class="text-sm text-ibm-gray70 dark:text-ibm-gray30 leading-relaxed mb-3">
+          A <span class="mono">Modelfile</span> tells Ollama how to load your GGUF: base file, chat template, system prompt, sampling parameters.
+        </p>
+<pre class="code mono"><span class="c"># Modelfile</span>
+<span class="k">FROM</span> ./model.gguf
+<span class="k">TEMPLATE</span> <span class="s">"""{{ if .System }}&lt;|system|&gt;{{ .System }}
+{{ end }}&lt;|user|&gt;{{ .Prompt }}
+&lt;|assistant|&gt;"""</span>
+<span class="k">SYSTEM</span> <span class="s">"You are a helpful assistant."</span>
+<span class="k">PARAMETER</span> temperature 0.7
+<span class="k">PARAMETER</span> stop <span class="s">"&lt;|user|&gt;"</span>
+
+<span class="c"># Then:</span>
+$ ollama create my-slm -f Modelfile
+$ ollama run my-slm</pre>
+      </article>
+    </div>
+
+    <div class="border-l-2 border-ibm-blue60 bg-ibm-blue10 dark:bg-ibm-blue90/30 p-4 text-sm">
+      <strong>The bottleneck is your dataset.</strong> A model trained on 500 well-crafted, diverse, on-topic pairs will outperform one trained on 50,000 noisy scraped ones. That's why this tool exists.
+    </div>
+  </section>
+
+  <!-- WORKSPACE -->
+  <section id="workspace" class="space-y-6">
+    <div class="flex items-center gap-3">
+      <span class="text-xs mono text-ibm-blue60 dark:text-ibm-blue40">02</span>
+      <h3 class="text-2xl font-light">Workspace</h3>
+    </div>
+
+    <!-- STATS BAR -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-px bg-ibm-gray20 dark:bg-ibm-gray80 border border-ibm-gray20 dark:border-ibm-gray80">
+      <div class="bg-white dark:bg-ibm-gray100 p-4">
+        <p class="text-[10px] mono uppercase text-ibm-gray70 dark:text-ibm-gray30 tracking-wider">Total entries</p>
+        <p id="stat-total" class="text-2xl font-light mt-1">0</p>
+      </div>
+      <div class="bg-white dark:bg-ibm-gray100 p-4">
+        <p class="text-[10px] mono uppercase text-ibm-gray70 dark:text-ibm-gray30 tracking-wider">Avg user tokens</p>
+        <p id="stat-user-tokens" class="text-2xl font-light mt-1">0</p>
+      </div>
+      <div class="bg-white dark:bg-ibm-gray100 p-4">
+        <p class="text-[10px] mono uppercase text-ibm-gray70 dark:text-ibm-gray30 tracking-wider">Avg asst. tokens</p>
+        <p id="stat-asst-tokens" class="text-2xl font-light mt-1">0</p>
+      </div>
+      <div class="bg-white dark:bg-ibm-gray100 p-4">
+        <p class="text-[10px] mono uppercase text-ibm-gray70 dark:text-ibm-gray30 tracking-wider">Storage size</p>
+        <p id="stat-size" class="text-2xl font-light mt-1">0 B</p>
+      </div>
+    </div>
+
+    <!-- TABS -->
+    <div class="border-b border-ibm-gray20 dark:border-ibm-gray80 flex overflow-x-auto">
+      <button data-tab="add" class="tab-btn active px-4 sm:px-6 py-3 text-sm font-medium whitespace-nowrap hover:bg-ibm-gray10 dark:hover:bg-ibm-gray90">
+        <span class="mono text-xs text-ibm-blue60 dark:text-ibm-blue40 mr-1">+</span> Add entry
+      </button>
+      <button data-tab="data" class="tab-btn px-4 sm:px-6 py-3 text-sm font-medium whitespace-nowrap hover:bg-ibm-gray10 dark:hover:bg-ibm-gray90">
+        <span class="mono text-xs text-ibm-blue60 dark:text-ibm-blue40 mr-1">≡</span> Dataset
+      </button>
+      <button data-tab="simulate" class="tab-btn px-4 sm:px-6 py-3 text-sm font-medium whitespace-nowrap hover:bg-ibm-gray10 dark:hover:bg-ibm-gray90">
+        <span class="mono text-xs text-ibm-blue60 dark:text-ibm-blue40 mr-1">▶</span> Simulate
+      </button>
+      <button data-tab="io" class="tab-btn px-4 sm:px-6 py-3 text-sm font-medium whitespace-nowrap hover:bg-ibm-gray10 dark:hover:bg-ibm-gray90">
+        <span class="mono text-xs text-ibm-blue60 dark:text-ibm-blue40 mr-1">↕</span> Import / Export
+      </button>
+    </div>
+
+    <!-- TAB: ADD ENTRY -->
+    <div data-panel="add" class="space-y-4">
+      <div class="grid md:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-xs mono uppercase tracking-wider mb-2 text-ibm-gray70 dark:text-ibm-gray30">
+            User message <span class="text-red-600">*</span>
+          </label>
+          <textarea id="input-user" rows="6"
+            class="carbon w-full px-3 py-2 bg-ibm-gray10 dark:bg-ibm-gray90 border-b-2 border-ibm-gray50 focus:border-ibm-blue60 text-sm resize-y"
+            placeholder="e.g. What is the difference between LoRA and full fine-tuning?"></textarea>
+          <div class="flex justify-between text-[10px] mono text-ibm-gray70 dark:text-ibm-gray30 mt-1">
+            <span><span id="count-user-chars">0</span> chars</span>
+            <span><span id="count-user-tokens">0</span> tokens (est.)</span>
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs mono uppercase tracking-wider mb-2 text-ibm-gray70 dark:text-ibm-gray30">
+            Assistant message <span class="text-red-600">*</span>
+          </label>
+          <textarea id="input-assistant" rows="6"
+            class="carbon w-full px-3 py-2 bg-ibm-gray10 dark:bg-ibm-gray90 border-b-2 border-ibm-gray50 focus:border-ibm-blue60 text-sm resize-y"
+            placeholder="e.g. LoRA freezes the base model and trains small low-rank adapter matrices..."></textarea>
+          <div class="flex justify-between text-[10px] mono text-ibm-gray70 dark:text-ibm-gray30 mt-1">
+            <span><span id="count-asst-chars">0</span> chars</span>
+            <span><span id="count-asst-tokens">0</span> tokens (est.)</span>
+          </div>
+        </div>
+      </div>
+
+      <details class="border border-ibm-gray20 dark:border-ibm-gray80">
+        <summary class="px-4 py-2 cursor-pointer text-xs mono uppercase tracking-wider hover:bg-ibm-gray10 dark:hover:bg-ibm-gray90">
+          Optional system prompt
+        </summary>
+        <div class="p-4 border-t border-ibm-gray20 dark:border-ibm-gray80">
+          <textarea id="input-system" rows="2"
+            class="carbon w-full px-3 py-2 bg-ibm-gray10 dark:bg-ibm-gray90 border-b-2 border-ibm-gray50 focus:border-ibm-blue60 text-sm resize-y"
+            placeholder="e.g. You are a Python tutoring assistant."></textarea>
+          <p class="text-[10px] text-ibm-gray70 dark:text-ibm-gray30 mt-1">If set, a system role will be prepended to this entry only.</p>
+        </div>
+      </details>
+
+      <div class="flex flex-wrap gap-2 pt-2">
+        <button id="btn-add" class="px-6 py-3 bg-ibm-blue60 hover:bg-ibm-blue70 text-white text-sm font-medium btn-primary flex items-center gap-2">
+          <span class="mono">+</span> Add to dataset
+        </button>
+        <button id="btn-clear-form" class="px-6 py-3 border border-ibm-gray100 dark:border-ibm-gray10 hover:bg-ibm-gray10 dark:hover:bg-ibm-gray90 text-sm">
+          Clear form
+        </button>
+        <button id="btn-load-samples" class="px-6 py-3 border border-ibm-gray100 dark:border-ibm-gray10 hover:bg-ibm-gray10 dark:hover:bg-ibm-gray90 text-sm ml-auto">
+          Load sample pairs
+        </button>
+      </div>
+    </div>
+
+    <!-- TAB: DATASET TABLE -->
+    <div data-panel="data" class="hidden space-y-4">
+      <div class="flex flex-wrap gap-2 items-center">
+        <input id="search-input" type="search" placeholder="Filter entries..."
+          class="carbon flex-1 min-w-[200px] px-3 py-2 bg-ibm-gray10 dark:bg-ibm-gray90 border-b-2 border-ibm-gray50 focus:border-ibm-blue60 text-sm">
+        <button id="btn-delete-all" class="px-4 py-2 border border-red-600 text-red-600 hover:bg-red-600 hover:text-white text-sm">
+          Delete all
+        </button>
+      </div>
+
+      <div class="border border-ibm-gray20 dark:border-ibm-gray80 overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-ibm-gray10 dark:bg-ibm-gray90 text-left">
+            <tr>
+              <th class="px-3 py-2 text-[10px] mono uppercase tracking-wider w-12">#</th>
+              <th class="px-3 py-2 text-[10px] mono uppercase tracking-wider">User</th>
+              <th class="px-3 py-2 text-[10px] mono uppercase tracking-wider">Assistant</th>
+              <th class="px-3 py-2 text-[10px] mono uppercase tracking-wider w-24 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="data-tbody">
+            <tr><td colspan="4" class="px-3 py-8 text-center text-ibm-gray70 dark:text-ibm-gray30 text-sm">No entries yet. Add your first pair above.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- TAB: SIMULATE -->
+    <div data-panel="simulate" class="hidden space-y-4">
+      <div class="bg-ibm-blue10 dark:bg-ibm-blue90/30 border-l-2 border-ibm-blue60 p-4 text-sm">
+        <strong>Simulation mode</strong> — Test your dataset before fine-tuning. This in-browser simulator uses Jaccard token similarity against your training pairs to retrieve the closest assistant response. It mimics what a well-trained retrieval-augmented or overfit SLM would output, helping you spot gaps and ambiguous prompts.
+      </div>
+
+      <div class="grid lg:grid-cols-3 gap-4">
+        <!-- Chat -->
+        <div class="lg:col-span-2 border border-ibm-gray20 dark:border-ibm-gray80 flex flex-col h-[500px]">
+          <div class="bg-ibm-gray10 dark:bg-ibm-gray90 px-4 py-2 border-b border-ibm-gray20 dark:border-ibm-gray80 flex items-center justify-between">
+            <span class="text-xs mono uppercase tracking-wider">Test chat</span>
+            <button id="btn-clear-chat" class="text-xs hover:text-ibm-blue60">Clear</button>
+          </div>
+          <div id="chat-log" class="flex-1 overflow-y-auto p-4 space-y-3">
+            <div class="text-center text-xs text-ibm-gray70 dark:text-ibm-gray30 mono">Start a conversation to test your dataset</div>
+          </div>
+          <form id="chat-form" class="border-t border-ibm-gray20 dark:border-ibm-gray80 p-2 flex gap-2">
+            <input id="chat-input" type="text" placeholder="Ask something..."
+              class="carbon flex-1 px-3 py-2 bg-ibm-gray10 dark:bg-ibm-gray90 border-b-2 border-ibm-gray50 focus:border-ibm-blue60 text-sm">
+            <button type="submit" class="px-4 py-2 bg-ibm-blue60 hover:bg-ibm-blue70 text-white text-sm btn-primary">Send</button>
+          </form>
+        </div>
+
+        <!-- Sim controls -->
+        <div class="space-y-4">
+          <div class="border border-ibm-gray20 dark:border-ibm-gray80 p-4 space-y-3">
+            <h4 class="text-xs mono uppercase tracking-wider">Parameters</h4>
+            <div>
+              <label class="text-xs flex justify-between"><span>Similarity threshold</span><span class="mono" id="lbl-threshold">0.15</span></label>
+              <input id="param-threshold" type="range" min="0" max="1" step="0.05" value="0.15" class="w-full accent-ibm-blue60">
+              <p class="text-[10px] text-ibm-gray70 dark:text-ibm-gray30 mt-1">Below this, the model says "I don't know."</p>
+            </div>
+            <div>
+              <label class="text-xs flex justify-between"><span>Temperature (noise)</span><span class="mono" id="lbl-temp">0.20</span></label>
+              <input id="param-temp" type="range" min="0" max="1" step="0.05" value="0.20" class="w-full accent-ibm-blue60">
+              <p class="text-[10px] text-ibm-gray70 dark:text-ibm-gray30 mt-1">Higher = sometimes pick 2nd/3rd best match.</p>
+            </div>
+            <div>
+              <label class="text-xs mono uppercase tracking-wider block mb-1">System prompt</label>
+              <textarea id="sim-system" rows="2" class="carbon w-full px-2 py-1 bg-ibm-gray10 dark:bg-ibm-gray90 border-b-2 border-ibm-gray50 focus:border-ibm-blue60 text-xs">You are a helpful assistant.</textarea>
+            </div>
+          </div>
+
+          <div class="border border-ibm-gray20 dark:border-ibm-gray80 p-4">
+            <h4 class="text-xs mono uppercase tracking-wider mb-2">Last match</h4>
+            <div class="text-xs space-y-2">
+              <div>
+                <div class="flex justify-between mb-1"><span class="text-ibm-gray70 dark:text-ibm-gray30">Confidence</span><span class="mono" id="match-score">—</span></div>
+                <div class="h-1 bg-ibm-gray20 dark:bg-ibm-gray80">
+                  <div id="match-bar" class="conf-bar h-full bg-ibm-blue60" style="width:0%"></div>
+                </div>
+              </div>
+              <div class="text-ibm-gray70 dark:text-ibm-gray30 mono break-words" id="match-source">No query yet</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: IMPORT/EXPORT -->
+    <div data-panel="io" class="hidden space-y-4">
+      <div class="grid md:grid-cols-2 gap-4">
+        <div class="border border-ibm-gray20 dark:border-ibm-gray80 p-6 space-y-3">
+          <div class="flex items-center gap-2">
+            <span class="mono text-xs text-ibm-blue60 dark:text-ibm-blue40">↓</span>
+            <h4 class="font-semibold">Export</h4>
+          </div>
+          <p class="text-sm text-ibm-gray70 dark:text-ibm-gray30">Download your dataset in the format your training pipeline expects.</p>
+          <div class="flex flex-col gap-2">
+            <button id="btn-export-jsonl" class="px-4 py-2 bg-ibm-blue60 hover:bg-ibm-blue70 text-white text-sm btn-primary text-left">
+              <span class="mono text-xs">.jsonl</span> &nbsp; Export as JSONL (one object per line)
+            </button>
+            <button id="btn-export-json" class="px-4 py-2 border border-ibm-gray100 dark:border-ibm-gray10 hover:bg-ibm-gray10 dark:hover:bg-ibm-gray90 text-sm text-left">
+              <span class="mono text-xs">.json</span> &nbsp; Export as JSON array
+            </button>
+            <button id="btn-copy-jsonl" class="px-4 py-2 border border-ibm-gray100 dark:border-ibm-gray10 hover:bg-ibm-gray10 dark:hover:bg-ibm-gray90 text-sm text-left">
+              <span class="mono text-xs">⧉</span> &nbsp; Copy JSONL to clipboard
+            </button>
+          </div>
+        </div>
+
+        <div class="border border-ibm-gray20 dark:border-ibm-gray80 p-6 space-y-3">
+          <div class="flex items-center gap-2">
+            <span class="mono text-xs text-ibm-blue60 dark:text-ibm-blue40">↑</span>
+            <h4 class="font-semibold">Import</h4>
+          </div>
+          <p class="text-sm text-ibm-gray70 dark:text-ibm-gray30">Load a <span class="mono">.jsonl</span> or <span class="mono">.json</span> file. Entries are merged (duplicates skipped).</p>
+          <label class="block">
+            <span class="px-4 py-2 bg-ibm-blue60 hover:bg-ibm-blue70 text-white text-sm cursor-pointer inline-block btn-primary">Choose file...</span>
+            <input id="file-input" type="file" accept=".json,.jsonl,application/json,text/plain" class="hidden">
+          </label>
+          <details class="text-xs">
+            <summary class="cursor-pointer text-ibm-gray70 dark:text-ibm-gray30 hover:text-ibm-blue60">Show expected schema</summary>
+<pre class="code mono mt-2">{<span class="k">"messages"</span>:[
+  {<span class="k">"role"</span>:<span class="s">"user"</span>,<span class="k">"content"</span>:<span class="s">"..."</span>},
+  {<span class="k">"role"</span>:<span class="s">"assistant"</span>,<span class="k">"content"</span>:<span class="s">"..."</span>}
+]}</pre>
+          </details>
+        </div>
+      </div>
+
+      <div class="border border-ibm-gray20 dark:border-ibm-gray80 p-6">
+        <h4 class="text-xs mono uppercase tracking-wider mb-3">Live preview (first 5 entries as JSONL)</h4>
+        <pre id="jsonl-preview" class="code mono text-xs whitespace-pre-wrap break-all max-h-64 overflow-y-auto">(empty)</pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer class="border-t border-ibm-gray20 dark:border-ibm-gray80 pt-6 pb-12 text-xs text-ibm-gray70 dark:text-ibm-gray30 flex flex-wrap justify-between gap-2">
+    <span class="mono">SLM Data Generator · v1.0 · localStorage-backed</span>
+    <span class="mono">Built for PyTorch + LoRA + GGUF + Ollama pipelines</span>
+  </footer>
+</main>
+
+<script>
+// ============================================================
+// STATE
+// ============================================================
+const STORAGE_KEY = 'slm_training_data_v1';
+const THEME_KEY = 'slm_theme';
+let dataset = [];
+let editingId = null;
+
+// ============================================================
+// THEME
+// ============================================================
+function initTheme() {
+  const saved = localStorage.getItem(THEME_KEY);
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  if (saved === 'dark' || (!saved && prefersDark)) {
+    document.documentElement.classList.add('dark');
+    document.documentElement.classList.remove('light');
+  } else {
+    document.documentElement.classList.remove('dark');
+    document.documentElement.classList.add('light');
+  }
+}
+document.getElementById('theme-toggle').addEventListener('click', () => {
+  document.documentElement.classList.toggle('dark');
+  document.documentElement.classList.toggle('light');
+  localStorage.setItem(THEME_KEY, document.documentElement.classList.contains('dark') ? 'dark' : 'light');
+});
+initTheme();
+
+// ============================================================
+// PERSISTENCE
+// ============================================================
+function loadData() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    dataset = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(dataset)) dataset = [];
+  } catch (e) {
+    console.warn('Failed to load data', e);
+    dataset = [];
+  }
+}
+function saveData() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(dataset));
+}
+
+// ============================================================
+// UTILITIES
+// ============================================================
+function uid() { return 'e_' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+function estTokens(s) { return Math.max(1, Math.ceil((s || '').length / 4)); }
+function tokenize(s) { return (s || '').toLowerCase().match(/\b[a-z0-9']+\b/g) || []; }
+function jaccard(a, b) {
+  const A = new Set(a), B = new Set(b);
+  if (A.size === 0 || B.size === 0) return 0;
+  let inter = 0;
+  for (const x of A) if (B.has(x)) inter++;
+  return inter / (A.size + B.size - inter);
+}
+function escapeHtml(s) {
+  return (s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function formatBytes(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1024*1024) return (b/1024).toFixed(1) + ' KB';
+  return (b/1024/1024).toFixed(2) + ' MB';
+}
+
+// ============================================================
+// TOASTS
+// ============================================================
+function toast(msg, kind='ok') {
+  const el = document.createElement('div');
+  const colors = {
+    ok: 'bg-ibm-blue60 text-white',
+    err: 'bg-red-600 text-white',
+    warn: 'bg-yellow-500 text-ibm-gray100'
+  };
+  el.className = `toast ${colors[kind]} px-4 py-2 text-sm shadow-lg mono`;
+  el.textContent = msg;
+  document.getElementById('toast-container').appendChild(el);
+  setTimeout(() => el.remove(), 2800);
+}
+
+// ============================================================
+// ENTRY HELPERS
+// ============================================================
+function getRole(entry, role) {
+  return (entry.messages || []).find(m => m.role === role)?.content || '';
+}
+function makeEntry(user, assistant, system) {
+  const messages = [];
+  if (system && system.trim()) messages.push({ role: 'system', content: system.trim() });
+  messages.push({ role: 'user', content: user.trim() });
+  messages.push({ role: 'assistant', content: assistant.trim() });
+  return { id: uid(), messages, ts: Date.now() };
+}
+
+// ============================================================
+// RENDERING
+// ============================================================
+function renderAll() {
+  renderStats();
+  renderTable();
+  renderPreview();
+}
+
+function renderStats() {
+  document.getElementById('stat-total').textContent = dataset.length;
+  document.getElementById('entry-count-badge').textContent = dataset.length + ' entries';
+  let uTok = 0, aTok = 0;
+  for (const e of dataset) {
+    uTok += estTokens(getRole(e, 'user'));
+    aTok += estTokens(getRole(e, 'assistant'));
+  }
+  document.getElementById('stat-user-tokens').textContent = dataset.length ? Math.round(uTok / dataset.length) : 0;
+  document.getElementById('stat-asst-tokens').textContent = dataset.length ? Math.round(aTok / dataset.length) : 0;
+  document.getElementById('stat-size').textContent = formatBytes(new Blob([JSON.stringify(dataset)]).size);
+}
+
+function renderTable() {
+  const tbody = document.getElementById('data-tbody');
+  const filter = document.getElementById('search-input').value.toLowerCase().trim();
+  const filtered = !filter ? dataset : dataset.filter(e => {
+    return getRole(e,'user').toLowerCase().includes(filter) ||
+           getRole(e,'assistant').toLowerCase().includes(filter);
+  });
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="4" class="px-3 py-8 text-center text-ibm-gray70 dark:text-ibm-gray30 text-sm">${dataset.length === 0 ? 'No entries yet. Add your first pair above.' : 'No matches for "'+escapeHtml(filter)+'"'}</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = filtered.map((e, idx) => {
+    const u = getRole(e, 'user');
+    const a = getRole(e, 'assistant');
+    const trueIdx = dataset.indexOf(e);
+    return `
+      <tr class="border-t border-ibm-gray20 dark:border-ibm-gray80 hover:bg-ibm-gray10 dark:hover:bg-ibm-gray90/50">
+        <td class="px-3 py-2 mono text-xs text-ibm-gray70 dark:text-ibm-gray30 align-top">${String(trueIdx+1).padStart(3,'0')}</td>
+        <td class="px-3 py-2 align-top max-w-xs"><div class="line-clamp-2 text-sm">${escapeHtml(u)}</div></td>
+        <td class="px-3 py-2 align-top max-w-xs"><div class="line-clamp-2 text-sm">${escapeHtml(a)}</div></td>
+        <td class="px-3 py-2 text-right align-top whitespace-nowrap">
+          <button onclick="editEntry('${e.id}')" class="text-xs hover:text-ibm-blue60 mr-2 mono">edit</button>
+          <button onclick="deleteEntry('${e.id}')" class="text-xs hover:text-red-600 mono">del</button>
+        </td>
+      </tr>`;
+  }).join('');
+}
+
+function renderPreview() {
+  const preview = dataset.slice(0, 5).map(e => JSON.stringify({ messages: e.messages })).join('\n');
+  document.getElementById('jsonl-preview').textContent = preview || '(empty)';
+}
+
+// ============================================================
+// FORM / CRUD
+// ============================================================
+const uIn = document.getElementById('input-user');
+const aIn = document.getElementById('input-assistant');
+const sIn = document.getElementById('input-system');
+
+function updateCounts() {
+  document.getElementById('count-user-chars').textContent = uIn.value.length;
+  document.getElementById('count-user-tokens').textContent = estTokens(uIn.value);
+  document.getElementById('count-asst-chars').textContent = aIn.value.length;
+  document.getElementById('count-asst-tokens').textContent = estTokens(aIn.value);
+}
+uIn.addEventListener('input', updateCounts);
+aIn.addEventListener('input', updateCounts);
+
+document.getElementById('btn-add').addEventListener('click', () => {
+  const u = uIn.value.trim(), a = aIn.value.trim(), s = sIn.value.trim();
+  if (!u || !a) { toast('Both user and assistant fields required', 'err'); return; }
+
+  if (editingId) {
+    const idx = dataset.findIndex(e => e.id === editingId);
+    if (idx >= 0) {
+      dataset[idx] = makeEntry(u, a, s);
+      dataset[idx].id = editingId; // preserve id
+      toast('Entry updated');
+    }
+    editingId = null;
+    document.getElementById('btn-add').innerHTML = '<span class="mono">+</span> Add to dataset';
+  } else {
+    dataset.push(makeEntry(u, a, s));
+    toast('Entry added');
+  }
+  saveData();
+  uIn.value = ''; aIn.value = ''; sIn.value = '';
+  updateCounts();
+  renderAll();
+});
+
+document.getElementById('btn-clear-form').addEventListener('click', () => {
+  uIn.value = ''; aIn.value = ''; sIn.value = '';
+  editingId = null;
+  document.getElementById('btn-add').innerHTML = '<span class="mono">+</span> Add to dataset';
+  updateCounts();
+});
+
+window.editEntry = (id) => {
+  const e = dataset.find(x => x.id === id);
+  if (!e) return;
+  uIn.value = getRole(e, 'user');
+  aIn.value = getRole(e, 'assistant');
+  const sys = e.messages.find(m => m.role === 'system')?.content || '';
+  sIn.value = sys;
+  if (sys) sIn.closest('details').open = true;
+  editingId = id;
+  document.getElementById('btn-add').innerHTML = '<span class="mono">↻</span> Update entry';
+  switchTab('add');
+  updateCounts();
+  window.scrollTo({ top: document.getElementById('workspace').offsetTop, behavior: 'smooth' });
+};
+
+window.deleteEntry = (id) => {
+  if (!confirm('Delete this entry?')) return;
+  dataset = dataset.filter(e => e.id !== id);
+  saveData();
+  renderAll();
+  toast('Deleted');
+};
+
+document.getElementById('btn-delete-all').addEventListener('click', () => {
+  if (dataset.length === 0) return;
+  if (!confirm(`Delete all ${dataset.length} entries? This cannot be undone.`)) return;
+  dataset = [];
+  saveData();
+  renderAll();
+  toast('All entries deleted', 'warn');
+});
+
+document.getElementById('search-input').addEventListener('input', renderTable);
+
+// ============================================================
+// SAMPLE DATA
+// ============================================================
+const SAMPLES = [
+  { u: "What is LoRA fine-tuning?", a: "LoRA (Low-Rank Adaptation) freezes the original model weights and trains small low-rank decomposition matrices injected into each transformer layer. This drastically reduces trainable parameters (often <1%) and lets you fine-tune large models on consumer GPUs." },
+  { u: "What is the GGUF format?", a: "GGUF is the binary file format used by llama.cpp and tools built on it (like Ollama). It bundles model weights, tokenizer, and metadata into a single mmap-friendly file, and supports many quantization levels (q4_k_m, q5_k_m, q8_0, etc.) for efficient CPU and GPU inference." },
+  { u: "How do I run a GGUF model in Ollama?", a: "Create a file named 'Modelfile' with a FROM line pointing at your .gguf, plus any TEMPLATE, SYSTEM, and PARAMETER directives. Then run: ollama create my-model -f Modelfile, followed by: ollama run my-model." },
+  { u: "How much data do I need to fine-tune a small model?", a: "For task-specific behavior with LoRA, 100–1000 high-quality examples is often enough. Quality, diversity, and consistency matter far more than raw volume. Noisy or contradictory examples will hurt the model." },
+  { u: "What quantization should I use for GGUF?", a: "q4_k_m is the most popular balance of size and quality for general use. q5_k_m is slightly better quality. q8_0 is near-lossless but ~2x the size. Use q3 or q2 only when memory is extremely constrained — quality drops noticeably." },
+  { u: "What's the difference between a base model and an instruct model?", a: "A base model is trained on raw text and predicts the next token. An instruct (or chat) model has been further fine-tuned on conversation pairs so it follows instructions. For most fine-tuning projects you start from an instruct model and adapt its behavior." },
+  { u: "Can I merge a LoRA adapter back into the base model?", a: "Yes. With the peft library: model = model.merge_and_unload(). This produces a standalone model with the LoRA deltas folded in. After merging, convert to GGUF with llama.cpp's convert_hf_to_gguf.py script." }
+];
+
+document.getElementById('btn-load-samples').addEventListener('click', () => {
+  let added = 0;
+  for (const s of SAMPLES) {
+    if (!dataset.some(e => getRole(e, 'user') === s.u)) {
+      dataset.push(makeEntry(s.u, s.a, ''));
+      added++;
+    }
+  }
+  saveData();
+  renderAll();
+  toast(`Loaded ${added} sample pair${added===1?'':'s'}`);
+});
+
+// ============================================================
+// TABS
+// ============================================================
+function switchTab(name) {
+  document.querySelectorAll('.tab-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.tab === name);
+  });
+  document.querySelectorAll('[data-panel]').forEach(p => {
+    p.classList.toggle('hidden', p.dataset.panel !== name);
+  });
+}
+document.querySelectorAll('.tab-btn').forEach(b => {
+  b.addEventListener('click', () => switchTab(b.dataset.tab));
+});
+
+// ============================================================
+// EXPORT
+// ============================================================
+function downloadFile(content, filename, mime) {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function asJSONL() {
+  return dataset.map(e => JSON.stringify({ messages: e.messages })).join('\n');
+}
+
+document.getElementById('btn-export-jsonl').addEventListener('click', () => {
+  if (dataset.length === 0) { toast('Dataset is empty', 'err'); return; }
+  downloadFile(asJSONL(), `slm-training-${Date.now()}.jsonl`, 'application/jsonl');
+  toast('Exported as JSONL');
+});
+
+document.getElementById('btn-export-json').addEventListener('click', () => {
+  if (dataset.length === 0) { toast('Dataset is empty', 'err'); return; }
+  const arr = dataset.map(e => ({ messages: e.messages }));
+  downloadFile(JSON.stringify(arr, null, 2), `slm-training-${Date.now()}.json`, 'application/json');
+  toast('Exported as JSON');
+});
+
+document.getElementById('btn-copy-jsonl').addEventListener('click', async () => {
+  if (dataset.length === 0) { toast('Dataset is empty', 'err'); return; }
+  try {
+    await navigator.clipboard.writeText(asJSONL());
+    toast('Copied JSONL to clipboard');
+  } catch {
+    toast('Clipboard blocked — use download instead', 'err');
+  }
+});
+
+// ============================================================
+// IMPORT
+// ============================================================
+document.getElementById('file-input').addEventListener('change', async (ev) => {
+  const file = ev.target.files[0];
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const records = parseImport(text);
+    let added = 0, skipped = 0;
+    for (const rec of records) {
+      const u = (rec.messages || []).find(m => m.role === 'user')?.content;
+      const a = (rec.messages || []).find(m => m.role === 'assistant')?.content;
+      if (!u || !a) { skipped++; continue; }
+      if (dataset.some(e => getRole(e, 'user') === u && getRole(e, 'assistant') === a)) { skipped++; continue; }
+      dataset.push({ id: uid(), messages: rec.messages, ts: Date.now() });
+      added++;
+    }
+    saveData();
+    renderAll();
+    toast(`Imported ${added}, skipped ${skipped}`);
+  } catch (e) {
+    console.error(e);
+    toast('Import failed: ' + e.message, 'err');
+  } finally {
+    ev.target.value = '';
+  }
+});
+
+function parseImport(text) {
+  text = text.trim();
+  // Try JSON array first
+  if (text.startsWith('[')) {
+    const arr = JSON.parse(text);
+    if (Array.isArray(arr)) return arr;
+  }
+  // Try single JSON object
+  if (text.startsWith('{') && !text.includes('\n{')) {
+    const obj = JSON.parse(text);
+    return [obj];
+  }
+  // JSONL: one object per line
+  const records = [];
+  for (const line of text.split('\n')) {
+    const t = line.trim();
+    if (!t) continue;
+    records.push(JSON.parse(t));
+  }
+  return records;
+}
+
+// ============================================================
+// SIMULATOR
+// ============================================================
+const chatLog = document.getElementById('chat-log');
+const chatForm = document.getElementById('chat-form');
+const chatInput = document.getElementById('chat-input');
+const paramThreshold = document.getElementById('param-threshold');
+const paramTemp = document.getElementById('param-temp');
+
+paramThreshold.addEventListener('input', () => {
+  document.getElementById('lbl-threshold').textContent = parseFloat(paramThreshold.value).toFixed(2);
+});
+paramTemp.addEventListener('input', () => {
+  document.getElementById('lbl-temp').textContent = parseFloat(paramTemp.value).toFixed(2);
+});
+
+function inferResponse(query) {
+  if (dataset.length === 0) {
+    return { response: "(No training data yet — add some pairs first.)", score: 0, source: null };
+  }
+  const qt = tokenize(query);
+  const scored = dataset.map(e => ({
+    entry: e,
+    score: jaccard(qt, tokenize(getRole(e, 'user')))
+  })).sort((x, y) => y.score - x.score);
+
+  const threshold = parseFloat(paramThreshold.value);
+  const temp = parseFloat(paramTemp.value);
+
+  // With temperature, occasionally pick from top-K
+  let pickIdx = 0;
+  if (temp > 0 && scored.length > 1 && Math.random() < temp) {
+    const topK = Math.min(3, scored.length);
+    // Weight only top-K candidates with non-zero score
+    const candidates = scored.slice(0, topK).filter(s => s.score > 0);
+    if (candidates.length > 1) {
+      pickIdx = Math.floor(Math.random() * candidates.length);
+    }
+  }
+  const best = scored[pickIdx];
+
+  if (!best || best.score < threshold) {
+    return {
+      response: "I don't have enough training data to answer that confidently. Try adding a pair for this kind of question.",
+      score: best ? best.score : 0,
+      source: best ? best.entry : null,
+      fallback: true
+    };
+  }
+  return {
+    response: getRole(best.entry, 'assistant'),
+    score: best.score,
+    source: best.entry,
+    fallback: false
+  };
+}
+
+function addBubble(role, text) {
+  // Clear placeholder
+  const placeholder = chatLog.querySelector('.text-center');
+  if (placeholder) placeholder.remove();
+
+  const wrap = document.createElement('div');
+  wrap.className = `flex ${role === 'user' ? 'justify-end' : 'justify-start'}`;
+  const bubble = document.createElement('div');
+  bubble.className = `${role === 'user' ? 'bubble-user' : 'bubble-bot'} px-3 py-2 max-w-[80%] text-sm whitespace-pre-wrap`;
+  bubble.textContent = text;
+  wrap.appendChild(bubble);
+  chatLog.appendChild(wrap);
+  chatLog.scrollTop = chatLog.scrollHeight;
+}
+
+function updateMatchPanel(result) {
+  const pct = Math.round(result.score * 100);
+  document.getElementById('match-score').textContent = pct + '%';
+  document.getElementById('match-bar').style.width = pct + '%';
+  document.getElementById('match-bar').className = `conf-bar h-full ${result.fallback ? 'bg-yellow-500' : 'bg-ibm-blue60'}`;
+  if (result.source) {
+    const src = getRole(result.source, 'user');
+    document.getElementById('match-source').textContent = '→ "' + (src.length > 80 ? src.slice(0, 80) + '…' : src) + '"';
+  } else {
+    document.getElementById('match-source').textContent = '(no match)';
+  }
+}
+
+chatForm.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const q = chatInput.value.trim();
+  if (!q) return;
+  addBubble('user', q);
+  chatInput.value = '';
+  // Small delay to feel responsive
+  setTimeout(() => {
+    const result = inferResponse(q);
+    addBubble('assistant', result.response);
+    updateMatchPanel(result);
+  }, 200);
+});
+
+document.getElementById('btn-clear-chat').addEventListener('click', () => {
+  chatLog.innerHTML = '<div class="text-center text-xs text-ibm-gray70 dark:text-ibm-gray30 mono">Start a conversation to test your dataset</div>';
+  updateMatchPanel({ score: 0, source: null, fallback: false });
+});
+
+// ============================================================
+// INIT
+// ============================================================
+loadData();
+renderAll();
+updateCounts();
+</script>
+</body>
+</html>
